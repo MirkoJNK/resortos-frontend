@@ -339,6 +339,7 @@
             }
         ],
         notifications: [],
+        tickets: [],
         audit: [
             {
                 time: '2026-10-15T10:42:00',
@@ -370,6 +371,8 @@
                 old.tables = defaults.tables;
             if (!Array.isArray(old.notifications))
                 old.notifications = [];
+            if (!Array.isArray(old.tickets))
+                old.tickets = [];
             old.notifications = old.notifications.filter(n => n && ['frontdesk', 'restaurant', 'admin'].includes(n.role)).map(n => ({ ...n, read: !!n.read }));
             old.rooms.forEach(r => {
                 if (typeof r.active !== 'boolean')
@@ -397,7 +400,7 @@
             return fresh;
         }
     }
-    let data = load(), role = 'frontdesk', route = 'dashboard', mobile = false, cart = {}, filter = 'all', search = '', orderDest = 'table', currentTable = '03', currentRoom = '', draftOrderId = null;
+    let data = load(), role = 'frontdesk', route = 'dashboard', mobile = false, cart = {}, filter = 'all', search = '', orderDest = 'table', currentTable = '03', currentRoom = '', draftOrderId = null, menuCategory = null;
     let auditFilters = {
         query: '',
         module: 'all',
@@ -418,6 +421,8 @@
     const pendingCharges = () => data.charges.filter(c => c.status !== 'void' && remain(c) > 0);
     function inferAuditType(action) {
         const a = String(action || '').toLowerCase();
+        if (/ticket|support request/i.test(a))
+            return 'support';
         if (/deleted|archived/.test(a))
             return 'remove';
         if (/voided|void order|reversal/.test(a))
@@ -482,6 +487,7 @@
         return event;
     }
     let bellOpen = false, notificationShow = 'all', notificationToastTimer = null;
+    let ticketFilters = { query: '', status: 'all', category: 'all', priority: 'all', department: 'all', attention: 'all', view: 'mine' };
     function unreadNotifications(r = role) {
         return (data.notifications || []).filter(n => n.role === r && !n.read).length;
     }
@@ -541,19 +547,15 @@
         save();
         bellOpen = false;
         const target = n.route || 'dashboard';
-        if (!navs[role].some(a => a[0] === target) && !(role === 'admin' && [
-            'rooms',
-            'tables',
-            'menu',
-            'services',
-            'users'
-        ].includes(target))) {
+        if (!routeAllowed(target)) {
             go('dashboard');
             return;
         }
         closeModal();
         go(target);
         if (n.entityId) {
+            if (target === 'tickets')
+                openTicket(n.entityId);
             if (role === 'restaurant' && target === 'tables')
                 openTable(n.entityId);
             if (role === 'frontdesk' && target === 'rooms') {
@@ -602,32 +604,62 @@
             ['dashboard', '▦', 'Dashboard'],
             ['rooms', '▤', 'Rooms'],
             ['stays', '◎', 'Room Stays'],
-            ['balances', '◇', 'Unpaid Balances'],
-            ['addservice', '+', 'Add Service Charge'],
+            ['charges', '◇', 'Charges'],
             ['checkout', '➜', 'Checkout'],
-            ['help', '?', 'Help Center']
+            ['tickets', '✉', 'Support & Issues']
         ],
         restaurant: [
             ['dashboard', '▦', 'Dashboard'],
             ['tables', '▦', 'Tables'],
             ['orders', '▤', 'Orders'],
-            ['neworder', '+', 'New Order'],
             ['roomcharges', '◇', 'Room Charges'],
-            ['posts', '◎', 'Today’s Posts'],
-            ['cash', '➜', 'Table Payments'],
-            ['help', '?', 'Help Center']
+            ['tickets', '✉', 'Support & Issues']
         ],
         admin: [
             ['dashboard', '▦', 'Dashboard'],
             ['audit', '◎', 'Audit Log'],
             ['system', '⚙', 'System Management'],
-            ['help', '?', 'Help Center']
+            ['tickets', '✉', 'Support & Issues']
         ]
     };
+    let chargesTab = 'unpaid';
+    let roomChargesTab = 'charges';
+    const secondaryRoutes = {
+        frontdesk: ['balances', 'addservice', 'help'],
+        restaurant: ['neworder', 'posts', 'cash', 'help'],
+        admin: ['rooms', 'tables', 'menu', 'services', 'users', 'help']
+    };
+    function routeAllowed(target) {
+        return navs[role].some(a => a[0] === target) || secondaryRoutes[role].includes(target);
+    }
+    function navSelected(id) {
+        if (route === id)
+            return true;
+        if (role === 'admin' && id === 'system')
+            return ['rooms', 'tables', 'menu', 'services', 'users'].includes(route);
+        if (role === 'frontdesk' && id === 'charges')
+            return ['balances', 'addservice'].includes(route);
+        if (role === 'restaurant') {
+            if (id === 'tables')
+                return ['neworder', 'cash'].includes(route);
+            if (id === 'roomcharges')
+                return route === 'posts';
+        }
+        return false;
+    }
     function go(next, preserveDraft = false) {
+        if (role === 'frontdesk' && ['balances', 'addservice'].includes(next)) {
+            chargesTab = next === 'balances' ? 'unpaid' : 'services';
+            next = 'charges';
+        }
+        if (role === 'restaurant' && next === 'posts') {
+            roomChargesTab = 'posts';
+            next = 'roomcharges';
+        }
         if (next === 'neworder' && !preserveDraft) {
             cart = {};
             draftOrderId = null;
+            menuCategory = null;
         }
         route = next;
         filter = 'all';
@@ -640,6 +672,7 @@
         if (!navs[r])
             return;
         role = r;
+        ticketFilters = { query: '', status: 'all', category: 'all', priority: 'all', department: 'all', attention: 'all', view: r === 'admin' ? 'all' : 'mine' };
         bellOpen = false;
         notificationShow = 'all';
         go('dashboard');
@@ -657,11 +690,12 @@
             stays: stays,
             balances: balances,
             addservice: servicePage,
+            charges: chargesPage,
             checkout: checkout,
             tables: tablesPage,
             orders: orders,
             neworder: newOrder,
-            roomcharges: roomCharges,
+            roomcharges: roomChargesPage,
             posts: posts,
             cash: cash,
             menu: menuPage,
@@ -669,16 +703,11 @@
             users: usersPage,
             audit: auditPage,
             system: systemManagementPage,
-            help: helpCenter
+            help: helpCenter,
+            tickets: ticketsPage
         };
         const app = document.getElementById('app');
-        app.innerHTML = `<div class="app"><aside class="sidebar ${mobile ? 'open' : ''}"><div class="brand"><div class="brand-mark">R</div>resortOS</div><div class="side-eyebrow">${names[role].toUpperCase()}</div><nav class="nav">${navs[role].map(([id, icon, label]) => `<button class="nav-item ${route === id || (role === 'admin' && id === 'system' && [
-            'rooms',
-            'tables',
-            'menu',
-            'services',
-            'users'
-        ].includes(route)) ? 'active' : ''}" data-nav="${id}"><span class="nav-icon">${icon}</span>${label}</button>`).join('')}</nav><div class="side-footer"><strong>${names[role]} Staff</strong><small>${role === 'frontdesk' ? 'Room & charge operations' : role === 'restaurant' ? 'Orders & restaurant charges' : 'System configuration'}</small></div></aside>${mobile ? '<div class="sidebar-backdrop" data-action="close-menu"></div>' : ''}<main class="main"><div class="topbar"><div style="display:flex;align-items:center;gap:13px;min-width:0"><button class="mobile-menu" data-action="toggle-menu" aria-label="Menu">☰</button><div class="breadcrumbs">RESORT OPERATIONS &nbsp; / &nbsp; ${names[role].toUpperCase()} &nbsp; / &nbsp; ${route.replace(/([A-Z])/g, ' $1').toUpperCase()}</div></div><div class="top-actions"><div class="notification-button-wrap"><button class="notify-bell" data-action="notify-toggle" type="button" aria-label="Notifications" title="Notifications"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg><span class="notify-count" ${unreadNotifications() ? '' : 'hidden'}>${unreadNotifications()}</span></button><div id="notify-popover-root"></div></div><button class="top-help-button" data-action="help-open" type="button" title="Help with this page" aria-label="Help with this page"><span class="top-help-glyph">?</span><span>Help</span></button><span class="date">${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span><select class="role-switch" id="role-switch" aria-label="Switch role"><option value="frontdesk" ${role === 'frontdesk' ? 'selected' : ''}>Front Desk</option><option value="restaurant" ${role === 'restaurant' ? 'selected' : ''}>Restaurant</option><option value="admin" ${role === 'admin' ? 'selected' : ''}>Admin</option></select></div></div><div class="content">${role === 'admin' && [
+        app.innerHTML = `<div class="app"><aside class="sidebar ${mobile ? 'open' : ''}"><div class="brand"><div class="brand-mark">R</div>resortOS</div><div class="side-eyebrow">${names[role].toUpperCase()}</div><nav class="nav" aria-label="Main navigation">${navs[role].filter(([id]) => id !== 'tickets').map(([id, icon, label]) => `<button class="nav-item ${navSelected(id) ? 'active' : ''}" data-nav="${id}"><span class="nav-icon">${icon}</span><span class="nav-label">${label}</span></button>`).join('')}</nav><nav class="nav-support" aria-label="Support">${navs[role].filter(([id]) => id === 'tickets').map(([id, icon, label]) => `<button class="nav-item ${navSelected(id) ? 'active' : ''}" data-nav="${id}" aria-label="${esc(ticketSidebarLabel())}"><span class="nav-icon">${icon}</span><span class="nav-label">${label}</span>${ticketAttentionMarkup()}</button>`).join('')}</nav><div class="side-footer"><strong>${names[role]} Staff</strong><small>${role === 'frontdesk' ? 'Room & charge operations' : role === 'restaurant' ? 'Orders & restaurant charges' : 'System configuration'}</small></div></aside>${mobile ? '<div class="sidebar-backdrop" data-action="close-menu"></div>' : ''}<main class="main"><div class="topbar"><div style="display:flex;align-items:center;gap:13px;min-width:0"><button class="mobile-menu" data-action="toggle-menu" aria-label="Menu">☰</button><div class="breadcrumbs">RESORT OPERATIONS &nbsp; / &nbsp; ${names[role].toUpperCase()} &nbsp; / &nbsp; ${route.replace(/([A-Z])/g, ' $1').toUpperCase()}</div></div><div class="top-actions"><div class="notification-button-wrap"><button class="notify-bell" data-action="notify-toggle" type="button" aria-label="Notifications" title="Notifications"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg><span class="notify-count" ${unreadNotifications() ? '' : 'hidden'}>${unreadNotifications()}</span></button><div id="notify-popover-root"></div></div><button class="top-help-button" data-action="help-open" type="button" title="Help with this page" aria-label="Help with this page"><span class="top-help-glyph">?</span><span>Help</span></button><span class="date">${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span><select class="role-switch" id="role-switch" aria-label="Switch role"><option value="frontdesk" ${role === 'frontdesk' ? 'selected' : ''}>Front Desk</option><option value="restaurant" ${role === 'restaurant' ? 'selected' : ''}>Restaurant</option><option value="admin" ${role === 'admin' ? 'selected' : ''}>Admin</option></select></div></div><div class="content">${role === 'admin' && [
             'rooms',
             'tables',
             'menu',
@@ -691,7 +720,7 @@
             services: 'Service Catalog',
             users: 'Users & Roles'
         })[route])}</span></div>` : ''}${(map[route] || dashboard)()}</div></main></div>`;
-        if (route === 'addservice')
+        if (route === 'addservice' || (role === 'frontdesk' && route === 'charges' && chargesTab === 'services'))
             syncServiceForm();
         helpInsertHints(app);
         syncBell();
@@ -731,7 +760,7 @@
     helpAdd('fd-overview', 'frontdesk', 'start', 'Understand the Front Desk dashboard', 'See occupied rooms, vacant rooms, and guests who still owe incidental charges.', [
         'Use the summary cards to monitor occupancy and unpaid balances.',
         'Choose Rooms to check a room and its active stay.',
-        'Choose Unpaid Balances to see charges still due.',
+        'Choose Charges, then Unpaid Balances, to see charges still due.',
         'Use the quick actions for routine Front Desk work.'
     ], 'Room rental and accommodation payments are NOT handled in resortOS.', ['dashboard', 'rooms'], 'summary rooms vacancy dashboard');
     helpAdd('fd-register', 'frontdesk', 'tasks', 'Register a guest stay', 'Assign a vacant room to a guest before posting room charges.', [
@@ -753,7 +782,7 @@
         'Use Review Checkout for a single combined payment and checkout flow.'
     ], 'Do not record accommodation charges here.', ['rooms', 'balances', 'checkout'], 'bill outstanding list view charges restaurant service');
     helpAdd('fd-service', 'frontdesk', 'tasks', 'Add an additional service charge', 'Post an extra service to an active guest stay.', [
-        'Choose Add Service Charge.',
+        'Open Charges, choose Service Charges, then use the additional service form.',
         'Select the active room and a service from the catalog.',
         'Set the quantity. Enter extra duration or units only if that service requires them.',
         'Check the calculated amount and save the charge.'
@@ -765,7 +794,7 @@
         'Ask Admin if a service has the wrong pricing fields.'
     ], 'Admin configures optional duration or additional-units fields in the Service Catalog.', ['addservice'], 'duration units rental hours service fields');
     helpAdd('fd-outstanding', 'frontdesk', 'terms', 'What is an outstanding balance?', 'An outstanding balance is the total unpaid amount posted to the active stay.', [
-        'Open Unpaid Balances or review a guest’s stay.',
+        'Open Charges → Unpaid Balances, or review a guest’s stay.',
         'Read Total, Paid, and Due to understand each charge.',
         'If a payment was already collected, record it before checking out.',
         'Reopen the room details after recording payment to verify the updated amount.'
@@ -799,7 +828,7 @@
         'Start at Dashboard to see the shift summary.',
         'Choose Tables to see each table and its current status.',
         'Choose Orders to review order history.',
-        'Use Room Charges and Today’s Posts to review charges sent to occupied guest rooms.'
+        'Open Room Charges and switch between Room Charges and Today’s Posts to review bills sent to occupied guest rooms.'
     ], 'The payment destination is chosen only when the guest finishes dining.', ['dashboard', 'tables'], 'restaurant navigation dashboard');
     helpAdd('rs-table-status', 'restaurant', 'terms', 'What do restaurant table statuses mean?', 'Table status tells you what action to take next.', [
         'Vacant: ready to start a new order.',
@@ -808,14 +837,14 @@
         'After payment or posting to a room, the table becomes available.'
     ], 'Never create a second live order for the same occupied table.', ['tables'], 'occupied vacant waiting table status');
     helpAdd('rs-start', 'restaurant', 'tasks', 'Open a table and take the first order', 'Create the first order at an available dining table.', [
-        'Choose Tables and select a Vacant table, or open New Order.',
+        'Choose Tables and select a vacant table, or use the New Order action on Tables or Dashboard.',
         'Add menu items and set their quantities.',
         'Review the total, then save the order.',
         'Leave the table Occupied while the guests are still dining.'
     ], 'Do not ask the guest to choose cash or room posting when first taking the order.', ['tables', 'neworder'], 'new order start table menu waiter');
     helpAdd('rs-add', 'restaurant', 'tasks', 'Add items to an occupied table', 'Keep one ongoing order and increase its total when guests order more.', [
         'Choose Tables and open the Occupied table.',
-        'Select Add Items (or choose the table from New Order).',
+        'Select Add Items, or open New Order from the Tables or Orders page.',
         'The existing order will be detected automatically.',
         'Add only the new items, review the combined total, and save.'
     ], 'Example: existing ₱500 + new ₱900 = ₱1,400. Old items must not be overwritten.', ['tables', 'neworder'], 'add more items existing ongoing total append reorder');
@@ -850,7 +879,7 @@
         'Check the order history and repost correctly if needed.'
     ], 'Voiding does not collect, settle, or automatically refund a payment. The reason is recorded for audit review.', ['orders'], 'void delete mistake cancel refund correct');
     helpAdd('rs-posts', 'restaurant', 'tasks', 'Review today’s room postings', 'Verify what the restaurant has posted to guest rooms today.', [
-        'Choose Today’s Posts.',
+        'Choose Room Charges, then select Today’s Posts.',
         'Find the order, room, amount, and posting status.',
         'Select an order to see its detail and audit information.',
         'Contact Front Desk for settlement questions.'
@@ -951,6 +980,28 @@
         'Provide a reason and confirm the action.',
         'Review Audit Log to see what was removed or archived.'
     ], 'Archived items remain in Admin management and can be reactivated; past orders, payments, and Audit Log records are preserved.', ['system', 'audit'], 'delete remove archive table menu service room history');
+    helpAdd('fd-tickets', 'frontdesk', 'tasks', 'Report an issue or ask for assistance', 'Send a question or report an operational problem to Admin.', [
+        'Open Support & Issues from the sidebar.',
+        'Select Create Ticket, choose a category, and describe the issue.',
+        'Check who can see it: private is the default for questions and system problems; operational issues default to My Department.',
+        'Submit the ticket and use My Tickets for replies or Shared Issues for common problems.',
+        'Reply if Admin asks for more information or reopen the ticket if the problem continues.'
+    ], 'Urgent safety incidents must also be reported directly to resort management.', ['tickets'], 'ticket support help issue question problem report maintenance');
+    helpAdd('rs-tickets', 'restaurant', 'tasks', 'Report a restaurant or system problem', 'Tell management about damaged equipment, software issues, or questions.', [
+        'Open Support & Issues in the sidebar.',
+        'Select Create Ticket and choose the appropriate issue category.',
+        'For a resort issue, enter the location and describe the problem.',
+        'Choose Only me & Admin, My Department, or All Staff; operational issues suggest My Department automatically.',
+        'Use My Tickets for private replies or Shared Issues for public management updates.'
+    ], 'For a safety emergency, contact management immediately instead of waiting for a ticket reply.', ['tickets'], 'ticket support issue problem equipment restaurant maintenance question');
+    helpAdd('ad-tickets', 'admin', 'tasks', 'Review and respond to employee tickets', 'Use Support & Issues to follow up on requests and operational problems.', [
+        'Open Support & Issues from the Admin sidebar.',
+        'Search by ticket number, subject, or description, and filter by priority, department, category, or status.',
+        'Choose View Ticket to read the original report and the conversation.',
+        'Reply privately to the employee, or publish an official update for shared audiences.',
+        'Change status, priority or visibility as needed; changing visibility requires a reason recorded in Audit Log.',
+        'Keep resolved tickets for future reference; important changes are recorded in Audit Log.'
+    ], 'Ticket history is preserved. Browser-only V1 tickets are not synchronized between separate computers.', ['tickets'], 'ticket support admin request reply status priority filter');
     const HELP_RELATIONSHIPS = {
         'fd-checkout': ['fd-payment', 'fd-checkout-block', 'fd-charges'],
         'fd-payment': ['fd-outstanding', 'fd-checkout'],
@@ -997,6 +1048,8 @@
         const modal = document.querySelector('#modal-root .modal');
         if (modal) {
             const title = (modal.querySelector('.modal-head h2')?.textContent || '').toLowerCase();
+            if (title.includes('ticket') || title.includes('support'))
+                return { heading: 'Support & Issues', ids: role === 'frontdesk' ? ['fd-tickets'] : role === 'restaurant' ? ['rs-tickets'] : ['ad-tickets'] };
             const ids = role === 'frontdesk' ? (title.includes('checkout') ? ['fd-checkout', 'fd-payment', 'fd-checkout-block'] : title.includes('charge') ? ['fd-charges', 'fd-outstanding', 'fd-service'] : title.includes('stay') ? ['fd-register', 'fd-charges'] : ['fd-service', 'fd-payment']) : role === 'restaurant' ? (title.includes('bill') || title.includes('cash') || title.includes('payment') ? ['rs-ready', 'rs-cash', 'rs-post'] : title.includes('table') ? ['rs-table-status', 'rs-add'] : title.includes('room') ? ['rs-post', 'rs-invalid-room'] : ['rs-add', 'rs-void']) : ['ad-system', 'ad-audit'];
             return {
                 heading: modal.querySelector('.modal-head h2')?.textContent || 'Current task',
@@ -1010,6 +1063,7 @@
             stays: 'Room Stays',
             balances: 'Unpaid Balances',
             addservice: 'Add Service Charge',
+            charges: 'Charges',
             tables: 'Tables',
             orders: 'Orders',
             neworder: 'New Order',
@@ -1017,10 +1071,12 @@
             posts: 'Today’s Posts',
             cash: 'Table Payments',
             system: 'System Management',
+            tickets: 'Support & Issues',
             services: 'Service Catalog',
             menu: 'Restaurant Menu',
             users: 'Users & Roles',
             audit: 'Audit Log',
+            tickets: 'Support & Issues',
             help: 'Help Center'
         };
         return {
@@ -1079,7 +1135,7 @@
         const a = helpAllowed(id);
         if (!a)
             return '<div class="help-empty">This article is unavailable to this role.</div>';
-        return `<article class="help-article"><button class="help-back-link" type="button" data-action="help-back">← Back to ${helpMode === 'panel' ? 'suggested help' : 'Help Center'}</button><div class="help-category-tag">${esc(HELP_CATEGORIES[a.category])}</div><h2>${esc(a.title)}</h2><p class="help-article-summary">${esc(a.summary)}</p><h3>Follow these steps</h3><ol class="help-steps">${a.steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol>${a.note ? `<div class="help-note"><strong>Important</strong><p>${esc(a.note)}</p></div>` : ''}${a.related?.length ? `<div class="help-related"><h3>Related help</h3>${a.related.map(id => helpAllowed(id)).filter(Boolean).map(x => helpListEntry(x, true)).join('')}</div>` : ''}${a.routes.length ? `<div class="help-article-actions"><button class="btn primary" type="button" data-action="help-go" data-id="${esc(a.routes[0])}">Go to ${esc(helpNavName(a.routes[0]))} →</button></div>` : ''}</article>`;
+        return `<article class="help-article"><button class="help-back-link" type="button" data-action="help-back">← Back to ${helpMode === 'panel' ? 'suggested help' : 'Help Center'}</button><div class="help-category-tag">${esc(HELP_CATEGORIES[a.category])}</div><h2>${esc(a.title)}</h2><p class="help-article-summary">${esc(a.summary)}</p><h3>Follow these steps</h3><ol class="help-steps">${a.steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol>${a.note ? `<div class="help-note"><strong>Important</strong><p>${esc(a.note)}</p></div>` : ''}${a.related?.length ? `<div class="help-related"><h3>Related help</h3>${a.related.map(id => helpAllowed(id)).filter(Boolean).map(x => helpListEntry(x, true)).join('')}</div>` : ''}${a.routes.length ? `<div class="help-article-actions"><button class="btn primary" type="button" data-action="help-go" data-id="${esc(a.routes[0])}">Go to ${esc(helpNavName(a.routes[0]))} →</button></div>` : ''}<div class="help-ticket-link"><span>Still need help from management?</span><button class="btn" type="button" data-action="ticket-create">Create Support Ticket →</button></div></article>`;
     }
     function helpNavName(id) {
         return {
@@ -1087,6 +1143,7 @@
             rooms: 'Rooms',
             stays: 'Room Stays',
             balances: 'Unpaid Balances',
+            charges: 'Charges',
             checkout: 'Checkout',
             addservice: 'Add Service Charge',
             tables: 'Tables',
@@ -1099,7 +1156,8 @@
             system: 'System Management',
             menu: 'Restaurant Menu',
             services: 'Service Catalog',
-            users: 'Users & Roles'
+            users: 'Users & Roles',
+            tickets: 'Support & Issues'
         }[id] || 'Page';
     }
     function helpPanelContent() {
@@ -1142,7 +1200,7 @@
                 },
                 {
                     title: 'Help is always available',
-                    text: 'Select the question mark in the top bar for guidance on the current page, or open Help Center in the sidebar for all instructions.',
+                    text: 'Select Help in the top bar for guidance, then choose Open Full Help Center for all instructions.',
                     icon: '?'
                 }
             ];
@@ -1204,13 +1262,7 @@
         }
     }
     function helpGoPage(id) {
-        if (!navs[role].some(x => x[0] === id) && !(role === 'admin' && [
-            'rooms',
-            'tables',
-            'menu',
-            'services',
-            'users'
-        ].includes(id)))
+        if (!routeAllowed(id))
             return;
         if (document.querySelector('#modal-root .modal')) {
             toast('Close your current task before switching pages. No form data was changed.', true);
@@ -1475,12 +1527,18 @@
             'Action'
         ], data.stays.filter(s => s.active).map(s => `<tr><td>${esc(s.id)}</td><td>${roomLabel(s.room)}</td><td>${esc(s.name || 'Guest')}</td><td>${esc(s.checkin)}</td><td>${esc(s.checkout)}</td><td class="text-amber">${money(dueForStay(s.id))}</td><td>${btn('View Stay', 'view-stay', { id: s.id, small: true })}</td></tr>`)))}`;
     }
-    function balances() {
+    function chargesPage() {
+        const tabs = `<div class="workspace-tabs" role="group" aria-label="Charge workspace"><button type="button" class="workspace-tab ${chargesTab === 'unpaid' ? 'active' : ''}" data-action="charges-tab" data-id="unpaid" aria-pressed="${chargesTab === 'unpaid'}">Unpaid Balances</button><button type="button" class="workspace-tab ${chargesTab === 'services' ? 'active' : ''}" data-action="charges-tab" data-id="services" aria-pressed="${chargesTab === 'services'}">Service Charges</button></div>`;
+        const action = chargesTab === 'unpaid' ? btn('+ Add Service Charge', 'nav-addservice', { primary: true }) : btn('View Unpaid Balances', 'nav-balances');
+        const content = chargesTab === 'unpaid' ? balances(true) : servicePage(true);
+        return `${header('Charges', 'Review unpaid restaurant and service charges, or add a requested extra service.', action)}${tabs}${content}`;
+    }
+    function balances(embedded = false) {
         const rows = pendingCharges().map(c => {
             const s = data.stays.find(x => x.id === c.stayId);
             return `<tr><td>${s ? roomLabel(s.room) : '—'}</td><td>${esc(c.label)}</td><td>${c.source === 'restaurant' ? 'Restaurant' : 'Service'}</td><td>${money(c.amount)}</td><td>${money(c.paid)}</td><td class="text-amber">${money(remain(c))}</td><td>${btn('Record Payment', 'pay-charge', { id: c.id, small: true })}</td></tr>`;
         });
-        return `${header('Unpaid Balances', 'Additional services and restaurant charges posted to guest stays.')}${card('Outstanding room charges', 'Payments are collected outside resortOS.', table([
+        return `${embedded ? '' : header('Unpaid Balances', 'Additional services and restaurant charges posted to guest stays.')}${card('Outstanding room charges', 'Payments are collected outside resortOS.', table([
             'Room',
             'Charge',
             'Type',
@@ -1490,9 +1548,9 @@
             'Action'
         ], rows))}`;
     }
-    function servicePage() {
+    function servicePage(embedded = false) {
         const st = data.stays.filter(s => s.active), sv = data.services.filter(x => x.active);
-        return `${header('Add Service Charge', 'Post only extra services a guest asks to add to their active stay.')}${card('Additional service charge', 'Duration and extra-unit fields appear only when Admin enables them for a service.', `<form id="service-form"><div class="form-grid"><div class="field"><label for="svc-room">Active room</label><select class="select" id="svc-room" name="room" required>${st.map(s => `<option value="${s.room}">${roomLabel(s.room)} · ${esc(s.name || 'Guest')}</option>`).join('')}</select></div><div class="field"><label for="svc-id">Service</label><select class="select" id="svc-id" name="service" required>${sv.map(s => `<option value="${s.id}">${esc(s.name)} · ${money(s.rate)} / ${esc(s.unit)}</option>`).join('')}</select></div><div class="field"><label for="svc-qty" id="svc-qty-label">Quantity</label><input class="input" id="svc-qty" name="qty" type="number" min="0.01" step="0.01" value="1" required></div><div class="field" id="svc-units-wrap" hidden><label id="svc-units-label" for="svc-duration">Additional units</label><input class="input" id="svc-duration" name="units" type="number" min="0.01" step="0.01" value="1"></div></div><div class="service-estimate"><div><span>Calculated service charge</span><strong id="svc-price-note">Select a service</strong></div><b id="svc-preview-total">—</b></div><div class="notice">Only post charges requested by a guest. Services paid immediately are outside this app.</div><div style="margin-top:20px"><button class="btn primary" type="submit" ${!st.length || !sv.length ? 'disabled' : ''}>Post Service Charge</button></div></form>`)}`;
+        return `${embedded ? '' : header('Add Service Charge', 'Post only extra services a guest asks to add to their active stay.')}${card('Additional service charge', 'Duration and extra-unit fields appear only when Admin enables them for a service.', `<form id="service-form"><div class="form-grid"><div class="field"><label for="svc-room">Active room</label><select class="select" id="svc-room" name="room" required>${st.map(s => `<option value="${s.room}">${roomLabel(s.room)} · ${esc(s.name || 'Guest')}</option>`).join('')}</select></div><div class="field"><label for="svc-id">Service</label><select class="select" id="svc-id" name="service" required>${sv.map(s => `<option value="${s.id}">${esc(s.name)} · ${money(s.rate)} / ${esc(s.unit)}</option>`).join('')}</select></div><div class="field"><label for="svc-qty" id="svc-qty-label">Quantity</label><input class="input" id="svc-qty" name="qty" type="number" min="0.01" step="0.01" value="1" required></div><div class="field" id="svc-units-wrap" hidden><label id="svc-units-label" for="svc-duration">Additional units</label><input class="input" id="svc-duration" name="units" type="number" min="0.01" step="0.01" value="1"></div></div><div class="service-estimate"><div><span>Calculated service charge</span><strong id="svc-price-note">Select a service</strong></div><b id="svc-preview-total">—</b></div><div class="notice">Only post charges requested by a guest. Services paid immediately are outside this app.</div><div style="margin-top:20px"><button class="btn primary" type="submit" ${!st.length || !sv.length ? 'disabled' : ''}>Post Service Charge</button></div></form>`)}`;
     }
     function syncServiceForm() {
         const select = document.getElementById('svc-id');
@@ -1543,31 +1601,178 @@
     }
     function newOrder() {
         const ts = data.tables.filter(t => t.active);
-        if (!ts.some(t => t.id === String(currentTable)))
+        if (!ts.some(t => t.id === String(currentTable))) {
             currentTable = ts[0]?.id || '';
-        const selected = Object.entries(cart).filter(([id, q]) => q > 0).map(([id, q]) => ({ ...data.menu.find(m => m.id === Number(id)), qty: q })).filter(i => i.id);
-        const items = data.menu.filter(m => m.active);
-        const addedTotal = selected.reduce((n, i) => n + i.price * i.qty, 0);
-        const open = tableOpenOrders(currentTable), existing = open[0], waiting = existing?.status === 'awaiting_payment', hasExisting = !!existing;
+        }
+
+        const selected = Object.entries(cart)
+            .filter(([, quantity]) => quantity > 0)
+            .map(([id, quantity]) => ({
+                ...data.menu.find(item => item.id === Number(id)),
+                qty: quantity
+            }))
+            .filter(item => item.id);
+        const items = data.menu.filter(item => item.active);
+        const categories = [...new Set(items.map(item => (item.category || 'Other').trim() || 'Other'))];
+        if (menuCategory !== null && !categories.includes(menuCategory)) {
+            menuCategory = null;
+        }
+
+        const addedTotal = selected.reduce((sum, item) => sum + item.price * item.qty, 0);
+        const open = tableOpenOrders(currentTable);
+        const existing = open[0];
+        const waiting = existing?.status === 'awaiting_payment';
+        const hasExisting = !!existing;
         const prev = existing ? total(existing) : 0;
         const name = tableName(currentTable);
         const heading = hasExisting ? 'Add Items to ' + name : 'New Restaurant Order';
-        const intro = hasExisting ? 'Existing orders stay intact. Add food or drinks to the same ongoing bill.' : 'Start a new table order. Payment is chosen only after the meal.';
-        const newItems = selected.length ? selected.map(i => `<div class="item-line"><div><strong>${esc(i.name)} × ${i.qty}</strong><small>${money(i.price)} each</small></div><span class="line-amount">${money(i.price * i.qty)}</span></div>`).join('') : '<div class="empty compact-empty">Select menu items with the + buttons.</div>';
-        const existingItems = hasExisting ? `<div class="existing-order-note"><strong>Current order #${esc(existing.id)} · ${money(prev)}</strong><span>This amount stays on the bill when you add more items.</span></div>${existing.items.map(i => `<div class="order-old-row"><span>${esc(i.name)} × ${i.qty}</span><strong>${money(i.price * i.qty)}</strong></div>`).join('')}` : '';
-        return `${header(heading, intro)}
- <div class="grid cols-split">${card('1  Menu items', hasExisting ? 'Select only the new items to add.' : 'Choose items for this table.', `<div class="catalog-grid">${items.map(m => `<div class="menu-card"><strong>${esc(m.name)}</strong><small>${esc(m.category)}</small><div class="price-row"><b>${money(m.price)}</b><div class="qty-control"><button data-action="cart-minus" data-id="${m.id}" aria-label="Remove ${esc(m.name)}" ${waiting ? 'disabled' : ''}>−</button><span>${cart[m.id] || 0}</span><button data-action="cart-plus" data-id="${m.id}" aria-label="Add ${esc(m.name)}" ${waiting ? 'disabled' : ''}>+</button></div></div></div>`).join('')}</div>`)}
- ${card('2  Table order', 'The guest decides how to pay only when finished eating.', `<div class="field"><label for="table-choice">Restaurant table</label><select id="table-choice" class="select">${ts.map(t => `<option value="${esc(t.id)}" ${t.id === String(currentTable) ? 'selected' : ''}>${esc(t.name)}${tableState(t.id) !== 'vacant' ? ' · ' + (tableState(t.id) === 'waiting' ? 'Waiting for payment' : 'Occupied') : ''}</option>`).join('')}</select></div>
- ${open.length > 1 ? `<div class="notice warning">This table has multiple older open orders. Ask your supervisor to review them before adding items.</div>` : ''}
- ${waiting ? `<div class="notice warning"><strong>This table is waiting for payment.</strong> To take another order, reopen dining from the table overview.</div><div style="margin-top:15px">${btn('Return to Table', 'open-table', { id: currentTable })}</div>` : ''}
- ${existingItems}
- <div class="section-label" style="margin-top:22px">${hasExisting ? 'New items to add' : 'Items for this order'}</div>${newItems}
- <div class="order-totals"><div><span>Current bill</span><strong>${money(prev)}</strong></div><div><span>New items</span><strong>${money(addedTotal)}</strong></div><div class="order-total-final"><strong>Updated bill total</strong><b>${money(prev + addedTotal)}</b></div></div>
- <button class="btn primary full" id="save-order" ${!selected.length || !ts.length || waiting || open.length > 1 ? 'disabled' : ''}>${hasExisting ? 'Add Items to Existing Order' : 'Save Order to Table'}</button><p class="hint">Changing tables clears unsaved selections. Payment is chosen only after guests finish dining.</p>`)}</div>`;
+        const intro = hasExisting
+            ? 'Existing orders stay intact. Add food or drinks to the same ongoing bill.'
+            : 'Start a new table order. Payment is chosen only after the meal.';
+
+        const newItems = selected.length
+            ? selected.map(item => `
+                <div class="item-line">
+                    <div>
+                        <strong>${esc(item.name)} × ${item.qty}</strong>
+                        <small>${money(item.price)} each</small>
+                    </div>
+                    <span class="line-amount">${money(item.price * item.qty)}</span>
+                </div>
+            `).join('')
+            : '<div class="empty compact-empty">Choose a category, then add food or drinks with the + buttons.</div>';
+
+        const existingItems = hasExisting
+            ? `
+                <div class="existing-order-note">
+                    <strong>Current order #${esc(existing.id)} · ${money(prev)}</strong>
+                    <span>This amount stays on the bill when you add more items.</span>
+                </div>
+                ${existing.items.map(item => `
+                    <div class="order-old-row">
+                        <span>${esc(item.name)} × ${item.qty}</span>
+                        <strong>${money(item.price * item.qty)}</strong>
+                    </div>
+                `).join('')}
+            `
+            : '';
+
+        const menuContent = menuCategory === null
+            ? `
+                <div class="catalog-category-head">
+                    <strong>Choose a food category</strong>
+                    <span>${categories.length} categor${categories.length === 1 ? 'y' : 'ies'}</span>
+                </div>
+                <div class="catalog-category-grid">
+                    ${categories.map(category => {
+                        const group = items.filter(item => (item.category || 'Other').trim() === category);
+                        const inCart = group.reduce((sum, item) => sum + (cart[item.id] || 0), 0);
+                        const initials = category.split(/\s+/).slice(0, 2).map(word => word[0]?.toUpperCase() || '').join('');
+                        return `
+                            <button
+                                type="button"
+                                class="catalog-category-tile"
+                                data-action="menu-category"
+                                data-id="${esc(category)}"
+                                aria-label="View ${esc(category)} menu items"
+                            >
+                                <span class="catalog-category-glyph" aria-hidden="true">${esc(initials)}</span>
+                                <span class="catalog-category-info">
+                                    <strong>${esc(category)}</strong>
+                                    <small>${group.length} item${group.length === 1 ? '' : 's'}${inCart ? ` · ${inCart} selected` : ''}</small>
+                                </span>
+                                <span class="catalog-category-arrow" aria-hidden="true">›</span>
+                            </button>
+                        `;
+                    }).join('') || '<div class="empty">No available menu items. Ask Admin to update the menu.</div>'}
+                </div>
+            `
+            : `
+                <div class="catalog-category-navigation">
+                    <button type="button" class="catalog-back" data-action="menu-category-back">
+                        <span aria-hidden="true">←</span> All categories
+                    </button>
+                    <span class="catalog-category-label">${esc(menuCategory)}</span>
+                </div>
+                <div class="catalog-category-head">
+                    <strong>${esc(menuCategory)}</strong>
+                    <span>${items.filter(item => (item.category || 'Other').trim() === menuCategory).length} available items</span>
+                </div>
+                <div class="catalog-grid">
+                    ${items.filter(item => (item.category || 'Other').trim() === menuCategory).map(item => `
+                        <div class="menu-card">
+                            <strong>${esc(item.name)}</strong>
+                            <small>${esc(item.category || 'Other')}</small>
+                            <div class="price-row">
+                                <b>${money(item.price)}</b>
+                                <div class="qty-control">
+                                    <button type="button" data-action="cart-minus" data-id="${item.id}" aria-label="Remove ${esc(item.name)}" ${waiting ? 'disabled' : ''}>−</button>
+                                    <span>${cart[item.id] || 0}</span>
+                                    <button type="button" data-action="cart-plus" data-id="${item.id}" aria-label="Add ${esc(item.name)}" ${waiting ? 'disabled' : ''}>+</button>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+
+        const menuPanel = card(
+            '1  Menu items',
+            hasExisting ? 'Select only the new items to add.' : 'Choose items for this table.',
+            menuContent
+        );
+
+        const orderPanel = card(
+            '2  Table order',
+            'The guest decides how to pay only when finished eating.',
+            `
+                <div class="field">
+                    <label for="table-choice">Restaurant table</label>
+                    <select id="table-choice" class="select">
+                        ${ts.map(t => `
+                            <option value="${esc(t.id)}" ${t.id === String(currentTable) ? 'selected' : ''}>
+                                ${esc(t.name)}${tableState(t.id) !== 'vacant' ? ' · ' + (tableState(t.id) === 'waiting' ? 'Waiting for payment' : 'Occupied') : ''}
+                            </option>
+                        `).join('')}
+                    </select>
+                </div>
+                ${open.length > 1 ? '<div class="notice warning">This table has multiple older open orders. Ask your supervisor to review them before adding items.</div>' : ''}
+                ${waiting ? `
+                    <div class="notice warning">
+                        <strong>This table is waiting for payment.</strong>
+                        To take another order, reopen dining from the table overview.
+                    </div>
+                    <div style="margin-top:15px">${btn('Return to Table', 'open-table', { id: currentTable })}</div>
+                ` : ''}
+                ${existingItems}
+                <div class="section-label" style="margin-top:22px">
+                    ${hasExisting ? 'New items to add' : 'Items for this order'}
+                </div>
+                ${newItems}
+                <div class="order-totals">
+                    <div><span>Current bill</span><strong>${money(prev)}</strong></div>
+                    <div><span>New items</span><strong>${money(addedTotal)}</strong></div>
+                    <div class="order-total-final">
+                        <strong>Updated bill total</strong>
+                        <b>${money(prev + addedTotal)}</b>
+                    </div>
+                </div>
+                <button class="btn primary full" id="save-order" ${!selected.length || !ts.length || waiting || open.length > 1 ? 'disabled' : ''}>
+                    ${hasExisting ? 'Add Items to Existing Order' : 'Save Order to Table'}
+                </button>
+                <p class="hint">You can switch categories without losing selected items. Changing tables clears unsaved selections. Payment is chosen only after guests finish dining.</p>
+            `
+        );
+
+        return `${header(heading, intro)}<div class="grid cols-split">${menuPanel}${orderPanel}</div>`;
     }
-    function roomCharges() {
+    function roomChargesPage() {
+        const tabs = `<div class="workspace-tabs" role="group" aria-label="Restaurant room charge workspace"><button type="button" class="workspace-tab ${roomChargesTab === 'charges' ? 'active' : ''}" data-action="roomcharges-tab" data-id="charges" aria-pressed="${roomChargesTab === 'charges'}">Room Charges</button><button type="button" class="workspace-tab ${roomChargesTab === 'posts' ? 'active' : ''}" data-action="roomcharges-tab" data-id="posts" aria-pressed="${roomChargesTab === 'posts'}">Today's Posts</button></div>`;
+        return `${header('Room Charges', 'Review restaurant bills posted to rooms and their posting history.', btn('View Tables', 'nav-tables', { primary: true }))}${tabs}${roomChargesTab === 'posts' ? posts(true) : roomCharges(true)}`;
+    }
+    function roomCharges(embedded = false) {
         const posted = data.orders.filter(o => o.destination === 'room');
-        return `${header('Restaurant Room Charges', 'View restaurant charges assigned to guest rooms.')}${card('Room posting history', 'Settlement is handled only by Front Desk.', table([
+        return `${embedded ? '' : header('Restaurant Room Charges', 'View restaurant charges assigned to guest rooms.')}${card('Room posting history', 'Settlement is handled only by Front Desk.', table([
             'Order',
             'Room',
             'Amount',
@@ -1576,9 +1781,9 @@
             'Action'
         ], posted.map(o => `<tr><td>#${esc(o.id)}</td><td>${roomLabel(o.room)}</td><td>${money(total(o))}</td><td>${badge(o.status)}</td><td>${esc(o.staff)}</td><td>${btn('View', 'view-order', { id: o.id, small: true })}</td></tr>`)))}`;
     }
-    function posts() {
+    function posts(embedded = false) {
         const posted = data.orders.filter(o => o.destination === 'room').sort((a, b) => b.created.localeCompare(a.created));
-        return `${header('Today’s Posts', 'Review room charges posted by restaurant staff.')}${card('Restaurant posting history', 'Void actions are retained as an audit record.', posted.map(o => `<div class="item-line"><div><strong>#${esc(o.id)} · ${roomLabel(o.room)}</strong><small>${esc(o.staff)} · ${prettyTime(o.created)}</small></div><div style="display:flex;align-items:center;gap:12px">${badge(o.status)} <strong>${money(total(o))}</strong>${btn('Details', 'view-order', { id: o.id, small: true })}</div></div>`).join('') || '<div class="empty">No room postings.</div>')}`;
+        return `${embedded ? '' : header('Today’s Posts', 'Review room charges posted by restaurant staff.')}${card('Restaurant posting history', 'Void actions are retained as an audit record.', posted.map(o => `<div class="item-line"><div><strong>#${esc(o.id)} · ${roomLabel(o.room)}</strong><small>${esc(o.staff)} · ${prettyTime(o.created)}</small></div><div style="display:flex;align-items:center;gap:12px">${badge(o.status)} <strong>${money(total(o))}</strong>${btn('Details', 'view-order', { id: o.id, small: true })}</div></div>`).join('') || '<div class="empty">No room postings.</div>')}`;
     }
     function cash() {
         const arr = data.orders.filter(o => o.destination === 'table' && o.status === 'awaiting_payment');
@@ -1589,6 +1794,387 @@
             'Status',
             'Action'
         ], arr.map(o => `<tr><td>#${esc(o.id)}</td><td>${esc(tableName(o.table))}</td><td>${money(total(o))}</td><td>${badge(o.status)}</td><td>${btn('Review Bill', 'table-bill', { id: o.id, small: true })}</td></tr>`)))}`;
+    }
+
+    const ticketCategories = {
+        system: 'System Problem',
+        question: 'Question or Assistance',
+        operational: 'Operational Issue'
+    };
+    const ticketStatuses = {
+        open: 'Open',
+        progress: 'In Progress',
+        waiting: 'Waiting for Employee',
+        resolved: 'Resolved'
+    };
+    const ticketRoleLabel = r => ({ frontdesk: 'Front Desk', restaurant: 'Restaurant', admin: 'Admin' }[r] || r);
+    const ticketVisibilities = {
+        private: 'Only me & Admin',
+        department: 'My Department',
+        all: 'All Staff'
+    };
+    const ticketDefaultVisibility = category => category === 'operational' ? 'department' : 'private';
+    const ticketVisibility = t => ticketVisibilities[t.visibility] ? t.visibility : 'private';
+    const ticketOwner = (t, activeRole = role) => t.role === activeRole && t.byRole === activeRole;
+    const ticketSharedWith = (t, activeRole = role) => {
+        if (activeRole === 'admin') return true;
+        const visibility = ticketVisibility(t);
+        return visibility === 'all' || (visibility === 'department' && t.role === activeRole);
+    };
+    const ticketCanView = t => role === 'admin' || ticketOwner(t) || ticketSharedWith(t);
+    const ticketAudience = t => ticketVisibility(t) === 'all'
+        ? ['frontdesk', 'restaurant']
+        : ticketVisibility(t) === 'department' ? [t.role] : [];
+    const ticketVisibilityLabel = t => ticketVisibilities[ticketVisibility(t)];
+    const ticketVisibilityBadge = t => `<span class="ticket-visibility ${ticketVisibility(t)}">${ticketVisibility(t) === 'private' ? '🔒' : ticketVisibility(t) === 'department' ? '◉' : '◎'} ${esc(ticketVisibilityLabel(t))}</span>`;
+    const ticketSharedOnly = t => role !== 'admin' && !ticketOwner(t);
+    const ticketClass = status => ({ open: 'amber', progress: 'violet', waiting: 'neutral', resolved: 'green' }[status] || 'neutral');
+    const ticketBadge = status => `<span class="badge ${ticketClass(status)}">${esc(ticketStatuses[status] || status)}</span>`;
+    const ticketPriority = priority => `<span class="ticket-priority ${priority === 'urgent' ? 'urgent' : ''}">${priority === 'urgent' ? '● Urgent' : 'Normal'}</span>`;
+    function ticketNeedsAttention(t, targetRole = role) {
+        if (!t) return false;
+        return t.unreadFor?.[targetRole] === true && (targetRole === 'admin' || ticketOwner(t, targetRole));
+    }
+    function ticketMarkUnread(t, targetRole) {
+        if (!t.unreadFor || typeof t.unreadFor !== 'object') t.unreadFor = {};
+        t.unreadFor[targetRole] = true;
+    }
+    function ticketMarkRead(t, targetRole = role) {
+        if (!ticketNeedsAttention(t, targetRole)) return false;
+        t.unreadFor[targetRole] = false;
+        save();
+        return true;
+    }
+    const ticketAttention = (targetRole = role) => (data.tickets || []).filter(t => ticketNeedsAttention(t, targetRole));
+    function ticketAttentionMarkup() {
+        const attention = ticketAttention();
+        if (!attention.length) return '';
+        const urgent = attention.some(t => t.priority === 'urgent');
+        const count = attention.length > 99 ? '99+' : String(attention.length);
+        return `<span class="ticket-nav-badge ${urgent ? 'urgent' : 'normal'}" aria-hidden="true">${count}</span>`;
+    }
+    function ticketSidebarLabel() {
+        const attention = ticketAttention();
+        return attention.length
+            ? `Support & Issues, ${attention.length} ticket${attention.length === 1 ? '' : 's'} with new activity${attention.some(t => t.priority === 'urgent') ? ', including urgent' : ''}`
+            : 'Support & Issues';
+    }
+    function syncTicketSidebar() {
+        const nav = document.querySelector('[data-nav="tickets"]');
+        if (!nav) return;
+        const existing = nav.querySelector('.ticket-nav-badge');
+        if (existing) existing.remove();
+        nav.insertAdjacentHTML('beforeend', ticketAttentionMarkup());
+        nav.setAttribute('aria-label', ticketSidebarLabel());
+    }
+    function ticketFocusFromSidebar() {
+        ticketFilters = {
+            query: '',
+            status: 'all',
+            category: 'all',
+            priority: 'all',
+            department: 'all',
+            attention: ticketAttention().length ? 'needs' : 'all',
+            view: role === 'admin' ? 'all' : 'mine'
+        };
+    }
+    const ticketIdentity = () => ({ frontdesk: 'Front Desk Staff', restaurant: 'Restaurant Staff', admin: 'Admin' }[role] || 'Employee');
+    const ticketOrder = () => [...(data.tickets || [])].filter(ticketCanView).sort((a, b) => {
+        if (a.status !== 'resolved' && b.status === 'resolved') return -1;
+        if (a.status === 'resolved' && b.status !== 'resolved') return 1;
+        if (a.priority !== b.priority) return a.priority === 'urgent' ? -1 : 1;
+        return new Date(b.updatedAt) - new Date(a.updatedAt);
+    });
+    function ticketsPage() {
+        const all = ticketOrder();
+        const view = ticketFilters.view || (role === 'admin' ? 'all' : 'mine');
+        const q = ticketFilters.query.trim().toLowerCase();
+        const visible = all.filter(t => view === 'shared'
+            ? ticketVisibility(t) !== 'private' && (role === 'admin' || ticketSharedWith(t))
+            : view === 'resolved' && role === 'admin'
+                ? t.status === 'resolved'
+                : view === 'mine' ? ticketOwner(t) : true);
+        const filtered = visible.filter(t => {
+            const matchText = [t.id, t.subject, t.description, t.location, ticketRoleLabel(t.role), ticketCategories[t.category]].join(' ').toLowerCase().includes(q);
+            return matchText && (ticketFilters.attention !== 'needs' || ticketNeedsAttention(t))
+                && (ticketFilters.status === 'all' || t.status === ticketFilters.status)
+                && (ticketFilters.category === 'all' || t.category === ticketFilters.category)
+                && (ticketFilters.priority === 'all' || t.priority === ticketFilters.priority)
+                && (ticketFilters.department === 'all' || t.role === ticketFilters.department);
+        });
+        const attentionCount = ticketAttention().length;
+        const tabs = role === 'admin'
+            ? [['all', 'All Tickets'], ['resolved', 'Resolved'], ['shared', 'Shared Issues']]
+            : [['mine', 'My Tickets'], ['shared', 'Shared Issues']];
+        const focusControls = `<div class="ticket-view-tabs" role="group" aria-label="Ticket visibility view">
+            ${tabs.map(([id, label]) => `<button type="button" class="ticket-view-tab ${view === id ? 'selected' : ''}" data-action="ticket-select-view" data-id="${id}">${label}${id === 'shared' ? ` <span class="ticket-tab-count">${all.filter(t => ticketVisibility(t) !== 'private' && (role === 'admin' || ticketSharedWith(t))).length}</span>` : id === 'resolved' ? ` <span class="ticket-tab-count">${all.filter(t => t.status === 'resolved').length}</span>` : ''}</button>`).join('')}
+        </div><div class="ticket-focus-controls" role="group" aria-label="Ticket list filter">
+            <button type="button" class="ticket-focus-option ${ticketFilters.attention === 'all' ? 'selected' : ''}" data-action="ticket-view-all">All</button>
+            <button type="button" class="ticket-focus-option ${ticketFilters.attention === 'needs' ? 'selected' : ''}" data-action="ticket-view-attention">New Activity <span class="ticket-focus-count">${attentionCount}</span></button>
+            <span class="ticket-focus-caption">The sidebar only shows new tickets (Admin), status changes and replies.</span>
+        </div>`;
+        const select = (label, key, values) => `<div class="ticket-filter"><label for="ticket-filter-${key}">${label}</label><select id="ticket-filter-${key}" class="select" data-ticket-filter="${key}"><option value="all">All ${label.toLowerCase()}</option>${Object.entries(values).map(([value, name]) => `<option value="${esc(value)}" ${ticketFilters[key] === value ? 'selected' : ''}>${esc(name)}</option>`).join('')}</select></div>`;
+        const stats = role === 'admin' ? `<div class="grid cols4 ticket-stats">${kpi('Unresolved', all.filter(t => t.status !== 'resolved').length, 'Tickets needing follow-up', 'amber')}${kpi('Urgent', all.filter(t => t.priority === 'urgent' && t.status !== 'resolved').length, 'Unresolved urgent tickets', 'purple')}${kpi('Waiting for staff', all.filter(t => t.status === 'waiting').length, 'Employee response needed')}${kpi('Resolved', all.filter(t => t.status === 'resolved').length, 'Retained in ticket history', 'green')}</div>` : '';
+        const rows = filtered.map(t => `<tr><td><strong>${esc(t.id)}</strong><small>${esc(prettyTime(t.createdAt))}</small></td><td><strong>${esc(t.subject)}</strong>${ticketNeedsAttention(t) ? '<span class="ticket-unread-indicator">New</span>' : ''}<small>${esc(ticketCategories[t.category] || 'Other')}${t.location ? ' · ' + esc(t.location) : ''}</small><small>${ticketVisibilityBadge(t)}</small></td>${role === 'admin' ? `<td>${esc(ticketRoleLabel(t.role))}<small>${esc(t.author)}</small></td>` : ''}<td>${ticketPriority(t.priority)}</td><td>${ticketBadge(t.status)}</td><td><strong>${esc(prettyTime(t.updatedAt))}</strong></td><td>${btn(ticketSharedOnly(t) ? 'View Issue →' : 'View Ticket →', 'ticket-view', { id: t.id, small: true })}</td></tr>`);
+        const mobileCards = filtered.map(t => `<article class="ticket-mobile-card"><div class="ticket-mobile-top"><strong>${esc(t.id)}</strong>${ticketBadge(t.status)}</div><h3>${esc(t.subject)} ${ticketNeedsAttention(t) ? '<span class="ticket-unread-indicator">New</span>' : ''}</h3><p>${esc(ticketCategories[t.category])} · ${ticketVisibilityBadge(t)}</p><div class="ticket-mobile-bottom"><span>${ticketPriority(t.priority)} · ${esc(prettyTime(t.updatedAt))}</span>${btn(ticketSharedOnly(t) ? 'View Issue →' : 'View Ticket →', 'ticket-view', { id: t.id, small: true })}</div></article>`).join('');
+        const description = role === 'admin' ? 'Review, respond to, and share issues across the resort.' : 'Manage your requests and see issues shared with your team.';
+        const sectionTitle = ticketFilters.attention === 'needs' ? 'Tickets with new activity' : view === 'shared' ? 'Shared Issues' : view === 'resolved' ? 'Resolved Ticket History' : role === 'admin' ? 'All support tickets' : 'My Tickets';
+        const empty = ticketFilters.attention === 'needs' ? 'No new ticket activity right now.' : view === 'shared' ? 'No shared issues match these filters.' : view === 'resolved' ? 'No resolved tickets match these filters.' : 'No matching tickets. Try clearing the filters or create a request.';
+        return `${header('Support & Issues', description, role !== 'admin' ? btn('+ Create Ticket', 'ticket-create', { primary: true }) : '')}${stats}
+            <section class="card section-space ticket-workspace"><div class="card-head"><div><h2>${sectionTitle}</h2><p class="sub">${view === 'shared' ? 'Visible issue summaries and official management updates. Private conversations stay private.' : 'Search and review tickets. Replies and history are preserved.'}</p></div><span class="audit-match-count">${filtered.length} of ${visible.length} tickets</span></div>${focusControls}
+            <div class="ticket-filter-grid"><div class="ticket-search"><label for="ticket-query">Search tickets</label><input id="ticket-query" class="input" data-ticket-search placeholder="Reference, topic, location…" value="${esc(ticketFilters.query)}"></div>${select('Status', 'status', ticketStatuses)}${select('Type', 'category', ticketCategories)}${select('Priority', 'priority', { normal: 'Normal', urgent: 'Urgent' })}${role === 'admin' ? select('Department', 'department', { frontdesk: 'Front Desk', restaurant: 'Restaurant' }) : ''}</div>
+            <div class="ticket-filter-footer"><span>${role === 'admin' ? 'Resolved tickets remain available in All Tickets and Resolved. All ticket activity is audited.' : 'For immediate hazards, contact management directly.'}</span>${btn('Clear Filters', 'ticket-clear-filters', { small: true })}</div>
+            ${table(role === 'admin' ? ['Ticket', 'Subject', 'Department', 'Priority', 'Status', 'Updated', 'Action'] : ['Ticket', 'Subject', 'Priority', 'Status', 'Updated', 'Action'], rows)}
+            <div class="ticket-mobile-list">${mobileCards}</div>${filtered.length ? '' : `<div class="ticket-empty-note">${empty}</div>`}</section>
+            <p class="ticket-demo-note">V1 uses browser storage and shared role identities. Privacy and cross-device sharing require authenticated backend enforcement before real deployment.</p>`;
+    }
+    function openNewTicket() {
+        if (helpMode === 'panel') helpClose();
+        if (document.querySelector('#modal-root .modal')) {
+            toast('Please finish or close your current window before creating a ticket.', true);
+            return;
+        }
+        const relatedArticle = helpAllowed(helpSelected);
+        const sourceContext = relatedArticle ? `Help article: ${relatedArticle.title}` : route !== 'tickets' ? `Page: ${helpNavName(route)}` : '';
+        showModal('Create Support Ticket', 'Report a problem or ask management for help.', `
+            <form id="ticket-create-form" class="ticket-form">
+                ${sourceContext ? `<div class="ticket-context">Related: ${esc(sourceContext)}</div>` : ''}
+                <input type="hidden" name="context" value="${esc(sourceContext)}">
+                <div class="field"><label for="ticket-category">What do you need help with?</label><select class="select" id="ticket-category" name="category" required>
+                    <option value="system">System Problem</option><option value="question">Question or Assistance</option><option value="operational">Operational Issue</option>
+                </select></div>
+                <div class="field"><label for="ticket-subject">Subject</label><input class="input" id="ticket-subject" name="subject" minlength="4" maxlength="110" placeholder="Briefly describe the issue" required></div>
+                <div class="field" id="ticket-location-field" hidden><label for="ticket-location">Where did it happen?</label><input class="input" id="ticket-location" name="location" maxlength="100" placeholder="e.g. Restaurant kitchen"></div>
+                <div class="field"><label for="ticket-description">Description</label><textarea id="ticket-description" class="input ticket-textarea" name="description" minlength="10" maxlength="2500" rows="5" required placeholder="What happened? What help do you need?"></textarea></div>
+                <div class="field"><label for="ticket-priority">Priority</label><select class="select" name="priority" id="ticket-priority"><option value="normal">Normal</option><option value="urgent">Urgent — needs prompt attention</option></select></div>
+                <fieldset class="ticket-visibility-picker"><legend>Who should see this issue?</legend><p class="ticket-visibility-hint">Suggested from the category. You can change it.</p>
+                    <label class="ticket-visibility-choice"><input type="radio" name="visibility" value="private" checked><span><strong>Only me & Admin</strong><small>Private question or individual issue</small></span></label>
+                    <label class="ticket-visibility-choice"><input type="radio" name="visibility" value="department"><span><strong>My Department</strong><small>Shared with ${esc(ticketRoleLabel(role))} staff and Admin</small></span></label>
+                    <label class="ticket-visibility-choice"><input type="radio" name="visibility" value="all"><span><strong>All Staff</strong><small>Shared with Front Desk, Restaurant and Admin</small></span></label>
+                </fieldset>
+                <div id="ticket-visibility-explanation" class="ticket-sharing-note" aria-live="polite"></div>
+                <div class="ticket-notice">Everyone in the selected audience can read the issue title, description and official updates. Replies to Admin stay private. Do not include passwords, payment details or unnecessary guest information. For emergencies, contact management directly.</div>
+                <div class="ticket-form-actions">${btn('Cancel', 'modal-close')}<button type="submit" class="btn primary">Submit Ticket</button></div>
+            </form>`);
+        document.getElementById('ticket-category')?.dispatchEvent(new Event('change', { bubbles: true }));
+        document.getElementById('ticket-subject')?.focus();
+    }
+    function syncTicketVisibilityInfo() {
+        const value = document.querySelector('#ticket-create-form input[name="visibility"]:checked')?.value || 'private';
+        const node = document.getElementById('ticket-visibility-explanation');
+        if (!node) return;
+        node.textContent = value === 'private'
+            ? 'Visible only to you and authorized Admin staff.'
+            : value === 'department'
+                ? `Immediately visible to ${ticketRoleLabel(role)} staff and Admin in Shared Issues.`
+                : 'Immediately visible to every department in Shared Issues. Check that your description is suitable for all staff.';
+    }
+    function submitTicket(v) {
+        if (!['frontdesk', 'restaurant', 'admin'].includes(role) || !ticketCategories[v.category]) return;
+        const subject = String(v.subject || '').trim();
+        const description = String(v.description || '').trim();
+        const location = String(v.location || '').trim();
+        const visibility = String(v.visibility || ticketDefaultVisibility(v.category));
+        if (subject.length < 4 || subject.length > 110 || description.length < 10 || description.length > 2500 || (v.category === 'operational' && !location)) {
+            toast('Please complete the subject, description and any required location.', true);
+            return;
+        }
+        if (!ticketVisibilities[visibility]) return;
+        if (visibility === 'all' && !window.confirm('Share this ticket title and description with ALL resort employees? Private replies will remain separate.')) return;
+        const time = new Date().toISOString();
+        const existing = data.tickets.map(t => Number(String(t.id).match(/\d+$/)?.[0] || 0));
+        const next = Math.max(0, ...existing) + 1;
+        const ticket = {
+            id: 'T-' + String(next).padStart(4, '0'),
+            role,
+            byRole: role,
+            author: ticketIdentity(),
+            category: v.category,
+            subject,
+            description,
+            context: String(v.context || '').slice(0, 180),
+            location: v.category === 'operational' ? location : '',
+            visibility,
+            priority: v.priority === 'urgent' ? 'urgent' : 'normal',
+            status: 'open',
+            unreadFor: { admin: role !== 'admin' },
+            createdAt: time,
+            updatedAt: time,
+            messages: [],
+            publicUpdates: [],
+            history: [{ at: time, by: ticketIdentity(), detail: 'Ticket created' }]
+        };
+        data.tickets.unshift(ticket);
+        audit(`Created support ticket ${ticket.id}`, ticketIdentity(), {
+            module: 'Support & Issues', type: 'support', target: ticket.id, note: ticket.subject,
+            changes: { Priority: ticket.priority, Category: ticketCategories[ticket.category], Visibility: ticketVisibilities[visibility] }
+        });
+        notify(['admin'], `New ${ticket.priority === 'urgent' ? 'urgent ' : ''}support ticket`, `${ticket.id}: ${ticket.subject}`, {
+            kind: ticket.priority === 'urgent' ? 'warning' : 'info', route: 'tickets', entityId: ticket.id
+        });
+        const viewers = ticketAudience(ticket);
+        if (viewers.length) notify(viewers, 'New shared issue', `${ticket.id}: ${ticket.subject}`, {
+            kind: ticket.priority === 'urgent' ? 'warning' : 'info', route: 'tickets', entityId: ticket.id
+        });
+        save();
+        closeModal();
+        ticketFilters.view = role === 'admin' ? 'all' : 'mine';
+        ticketFilters.attention = 'all';
+        go('tickets');
+        toast(`Ticket ${ticket.id} submitted.`);
+        openTicket(ticket.id);
+    }
+    function openTicket(id) {
+        const t = data.tickets.find(t => t.id === String(id));
+        if (!t || !ticketCanView(t)) return;
+        const sharedReader = ticketSharedOnly(t);
+        if (!sharedReader && ticketMarkRead(t)) {
+            if (ticketFilters.attention === 'needs' && ticketAttention().length === 0) ticketFilters.attention = 'all';
+            render();
+        }
+        if (!sharedReader && role !== 'admin') {
+            const adminReplies = (t.messages || []).filter(m => m.role === 'admin');
+            const latest = adminReplies[adminReplies.length - 1];
+            if (latest && t.employeeSeenReplyId !== latest.id) {
+                t.employeeSeenReplyId = latest.id;
+                save();
+                render();
+            }
+        }
+        const updates = (t.publicUpdates || []).map(u => `<div class="ticket-public-update"><strong>Management update</strong><small>${esc(prettyTime(u.at))}</small><p>${esc(u.text)}</p></div>`).join('');
+        const sharedSummary = `<div class="ticket-detail-summary"><div>${ticketBadge(t.status)} ${ticketPriority(t.priority)} ${ticketVisibilityBadge(t)}</div><p><strong>${esc(ticketCategories[t.category])}</strong> · ${esc(ticketRoleLabel(t.role))} · ${esc(prettyTime(t.createdAt))}</p>${t.location ? `<p><strong>Location:</strong> ${esc(t.location)}</p>` : ''}</div>
+            <div class="ticket-original"><strong>Issue report</strong><p>${esc(t.description)}</p></div>
+            <div class="ticket-public-updates"><h3>Official Updates</h3>${updates || '<div class="ticket-thread-empty">No management updates yet.</div>'}</div>`;
+        if (sharedReader) {
+            showModal(`Shared Issue ${esc(t.id)}`, esc(t.subject), `<div class="ticket-detail">${sharedSummary}<div class="ticket-sharing-note">This issue is shared with authorized staff. The reporter’s private conversation with Admin is not shown.</div></div>`);
+            return;
+        }
+        const history = [
+            ...(t.history || []).map(h => ({ time: h.at, kind: 'history', author: h.by, content: h.detail })),
+            ...(t.messages || []).map(m => ({ time: m.at, kind: 'message', author: m.by, role: m.role, content: m.text }))
+        ].sort((a, b) => new Date(a.time) - new Date(b.time));
+        const messages = history.map(item => `<div class="ticket-message ${item.kind === 'history' ? 'ticket-event' : item.role === role ? 'own' : ''}">${item.kind === 'history' ? `<span>● ${esc(item.content)}</span><small>${esc(item.author)} · ${esc(prettyTime(item.time))}</small>` : `<div><strong>${esc(item.author)}</strong><small>${esc(prettyTime(item.time))}</small></div><p>${esc(item.content)}</p>`}</div>`).join('');
+        const canReply = t.status !== 'resolved';
+        const reply = canReply ? `<form id="ticket-reply-form" class="ticket-reply-form"><input type="hidden" name="id" value="${esc(t.id)}"><label for="ticket-reply">Private reply to ${role === 'admin' ? 'employee' : 'Admin'}</label><textarea id="ticket-reply" class="input ticket-textarea" name="message" rows="3" maxlength="1800" minlength="1" placeholder="Write a private reply…" required></textarea><button type="submit" class="btn primary">Send Private Reply</button></form>` : `<div class="ticket-notice">This ticket is resolved. ${role === 'admin' ? 'Change its status to continue the conversation.' : 'Reopen it if the issue still exists.'}</div>`;
+        const adminControls = role === 'admin' ? `<form id="ticket-manage-form" class="ticket-manage-form"><input name="id" type="hidden" value="${esc(t.id)}"><div class="grid form-grid"><div class="field"><label for="manage-ticket-status">Status</label><select class="select" id="manage-ticket-status" name="status">${Object.entries(ticketStatuses).map(([key, name]) => `<option value="${esc(key)}" ${t.status === key ? 'selected' : ''}>${esc(name)}</option>`).join('')}</select></div><div class="field"><label for="manage-ticket-priority">Priority</label><select class="select" id="manage-ticket-priority" name="priority"><option value="normal" ${t.priority === 'normal' ? 'selected' : ''}>Normal</option><option value="urgent" ${t.priority === 'urgent' ? 'selected' : ''}>Urgent</option></select></div></div>
+            <div class="field"><label for="manage-ticket-visibility">Who can see this issue?</label><select class="select" id="manage-ticket-visibility" name="visibility">${Object.entries(ticketVisibilities).map(([key, name]) => `<option value="${key}" ${ticketVisibility(t) === key ? 'selected' : ''}>${esc(name)}</option>`).join('')}</select></div>
+            <div class="field" id="ticket-visibility-reason-wrap" hidden><label for="ticket-visibility-reason">Reason for changing visibility</label><input class="input" id="ticket-visibility-reason" name="visibilityReason" maxlength="300" placeholder="Why should the audience change?"></div>
+            <button class="btn" type="submit">Save Ticket Settings</button></form>
+            <form id="ticket-public-update-form" class="ticket-reply-form"><input type="hidden" name="id" value="${esc(t.id)}"><label for="ticket-public-update">Publish a shared update</label><textarea class="input ticket-textarea" id="ticket-public-update" name="message" minlength="3" maxlength="1200" rows="2" placeholder="An update visible to everyone allowed to see the issue…" required></textarea><button class="btn" type="submit">Publish Update</button></form>` : t.status === 'resolved' ? `<div class="ticket-form-actions">${btn('Reopen Ticket', 'ticket-reopen', { id: t.id, primary: true })}</div>` : '';
+        showModal(`Ticket ${esc(t.id)}`, esc(t.subject), `<div class="ticket-detail">${sharedSummary}<div class="ticket-thread"><h3>Private Conversation & Activity</h3>${messages || '<div class="ticket-thread-empty">No replies yet.</div>'}</div>${adminControls}${reply}</div>`);
+        const thread = document.querySelector('#modal-root .modal-body');
+        if (thread) thread.scrollTop = 0;
+    }
+    function replyTicket(v) {
+        const t = data.tickets.find(t => t.id === String(v.id));
+        if (!t || !ticketCanView(t) || t.status === 'resolved') return;
+        const message = String(v.message || '').trim();
+        if (!message || message.length > 1800) {
+            toast('Write a reply before sending.', true);
+            return;
+        }
+        const now = new Date().toISOString();
+        t.messages.push({ id: uid('MSG'), role, by: ticketIdentity(), text: message, at: now });
+        if (t.status === 'waiting' && role !== 'admin') {
+            t.history.push({ at: now, by: ticketIdentity(), detail: 'Employee replied; ticket moved to In Progress' });
+            t.status = 'progress';
+        }
+        if (t.status === 'open' && role === 'admin') {
+            t.history.push({ at: now, by: 'Admin', detail: 'Ticket moved to In Progress' });
+            t.status = 'progress';
+        }
+        t.updatedAt = now;
+        ticketMarkUnread(t, role === 'admin' ? t.role : 'admin');
+        audit(`Replied to support ticket ${t.id}`, ticketIdentity(), { module: 'Support & Issues', type: 'support', target: t.id, note: 'Reply added' });
+        notify(role === 'admin' ? [t.role] : ['admin'], `New reply on ${t.id}`, t.subject, { route: 'tickets', entityId: t.id, kind: 'info' });
+        save();
+        render();
+        openTicket(t.id);
+        toast('Reply sent.');
+    }
+    function manageTicket(v) {
+        if (role !== 'admin') return;
+        const t = data.tickets.find(t => t.id === String(v.id));
+        if (!t || !ticketStatuses[v.status] || !['normal', 'urgent'].includes(v.priority) || !ticketVisibilities[v.visibility]) return;
+        const beforeStatus = t.status;
+        const beforePriority = t.priority;
+        const beforeVisibility = ticketVisibility(t);
+        if (beforeStatus === v.status && beforePriority === v.priority && beforeVisibility === v.visibility) {
+            toast('Nothing changed.');
+            return;
+        }
+        const reason = String(v.visibilityReason || '').trim();
+        if (beforeVisibility !== v.visibility && reason.length < 5) {
+            toast('Please enter a reason for changing who can see this issue.', true);
+            return;
+        }
+        if (beforeVisibility !== v.visibility && v.visibility === 'all' && !window.confirm('Share this issue title and description with ALL staff?')) return;
+        const oldAudience = ticketAudience(t);
+        const now = new Date().toISOString();
+        t.status = v.status;
+        t.priority = v.priority;
+        t.visibility = v.visibility;
+        t.updatedAt = now;
+        t.history.push({ at: now, by: 'Admin', detail: 'Ticket settings updated' });
+        const changes = {};
+        if (beforeStatus !== t.status) {
+            changes.Status = `${ticketStatuses[beforeStatus]} → ${ticketStatuses[t.status]}`;
+            ticketMarkUnread(t, t.role);
+        }
+        if (beforePriority !== t.priority) changes.Priority = `${beforePriority} → ${t.priority}`;
+        if (beforeVisibility !== t.visibility) {
+            changes.Visibility = `${ticketVisibilities[beforeVisibility]} → ${ticketVisibilities[t.visibility]}`;
+            changes.Reason = reason;
+        }
+        audit(`Updated support ticket ${t.id}`, 'Admin', { module: 'Support & Issues', type: 'support', target: t.id, changes });
+        if (beforeStatus !== t.status || beforePriority !== t.priority) notify([t.role], `Ticket ${t.id} updated`, `${t.subject} · ${ticketStatuses[t.status]}`, { route: 'tickets', entityId: t.id, kind: t.status === 'resolved' ? 'success' : 'info' });
+        const newAudience = ticketAudience(t);
+        if (beforeVisibility !== t.visibility) {
+            data.notifications = data.notifications.filter(n => n.entityId !== t.id || n.role === 'admin' || n.role === t.role || ticketSharedWith(t, n.role));
+            const newlyShared = newAudience.filter(r => !oldAudience.includes(r));
+            if (newlyShared.length) notify(newlyShared, 'Issue shared with your team', `${t.id}: ${t.subject}`, { route: 'tickets', entityId: t.id, kind: 'info' });
+            notify([t.role], `Visibility changed on ${t.id}`, ticketVisibilities[t.visibility], { route: 'tickets', entityId: t.id, kind: 'info' });
+        }
+        if (beforeStatus !== t.status && t.visibility !== 'private') notify(newAudience.filter(r => r !== t.role), `Shared issue ${t.id} updated`, `${t.subject} · ${ticketStatuses[t.status]}`, { route: 'tickets', entityId: t.id, kind: t.status === 'resolved' ? 'success' : 'info' });
+        save();
+        render();
+        openTicket(t.id);
+        toast('Ticket updated.');
+    }
+    function publishTicketUpdate(v) {
+        if (role !== 'admin') return;
+        const t = data.tickets.find(t => t.id === String(v.id));
+        const message = String(v.message || '').trim();
+        if (!t || message.length < 3 || message.length > 1200) {
+            toast('Write a short update before publishing.', true);
+            return;
+        }
+        const now = new Date().toISOString();
+        if (!Array.isArray(t.publicUpdates)) t.publicUpdates = [];
+        t.publicUpdates.push({ id: uid('PUB'), text: message, at: now });
+        t.updatedAt = now;
+        t.history.push({ at: now, by: 'Admin', detail: 'Published an official issue update' });
+        audit(`Published update on ticket ${t.id}`, 'Admin', { module: 'Support & Issues', type: 'support', target: t.id, note: message });
+        notify([...new Set([t.role, ...ticketAudience(t)])], `Management update on ${t.id}`, t.subject, { route: 'tickets', entityId: t.id, kind: 'info' });
+        save();
+        render();
+        openTicket(t.id);
+        toast('Update published.');
+    }
+    function reopenTicket(id) {
+        const t = data.tickets.find(t => t.id === String(id));
+        if (!t || role === 'admin' || !ticketCanView(t) || t.status !== 'resolved') return;
+        const time = new Date().toISOString();
+        t.status = 'open';
+        t.updatedAt = time;
+        ticketMarkUnread(t, 'admin');
+        t.history.push({ at: time, by: ticketIdentity(), detail: 'Ticket reopened' });
+        audit(`Reopened support ticket ${t.id}`, ticketIdentity(), { module: 'Support & Issues', type: 'support', target: t.id });
+        notify(['admin'], `Ticket ${t.id} reopened`, t.subject, { route: 'tickets', entityId: t.id, kind: 'warning' });
+        save();
+        render();
+        openTicket(t.id);
+        toast('Ticket reopened.');
     }
     function menuPage() {
         return `${header('Restaurant Menu', 'Manage available menu items and prices.', btn('+ Add Menu Item', 'add-menu', { primary: true }))}${card('Active menu', 'Changes affect new orders; historical order prices are retained.', table([
@@ -1638,7 +2224,8 @@
         update: 'Updated',
         remove: 'Removed / archived',
         void: 'Voided',
-        other: 'Other'
+        other: 'Other',
+        support: 'Support ticket'
     };
     function auditTypeClass(type) {
         return [
@@ -1650,7 +2237,8 @@
             'create',
             'update',
             'remove',
-            'void'
+            'void',
+            'support'
         ].includes(type) ? type : 'other';
     }
     function auditIcon(type) {
@@ -2072,6 +2660,10 @@
                 return;
             }
             closeModal();
+            if (nav.dataset.nav === 'charges')
+                chargesTab = 'unpaid';
+            if (nav.dataset.nav === 'roomcharges')
+                roomChargesTab = 'charges';
             if (nav.dataset.nav === 'help' && route !== 'help') {
                 helpCaptureDraft();
                 helpReturnRoute = route;
@@ -2079,6 +2671,7 @@
                 helpSelected = '';
                 helpCategory = 'all';
             }
+            if (nav.dataset.nav === 'tickets') ticketFocusFromSidebar();
             go(nav.dataset.nav);
             return;
         }
@@ -2175,8 +2768,48 @@
             return;
         }
         switch (act) {
+            case 'charges-tab':
+                if (role === 'frontdesk' && route === 'charges' && ['unpaid', 'services'].includes(id)) {
+                    chargesTab = id;
+                    render();
+                }
+                break;
+            case 'roomcharges-tab':
+                if (role === 'restaurant' && route === 'roomcharges' && ['charges', 'posts'].includes(id)) {
+                    roomChargesTab = id;
+                    render();
+                }
+                break;
             case 'toggle-menu':
                 mobile = !mobile;
+                render();
+                break;
+            case 'ticket-create':
+                openNewTicket();
+                break;
+            case 'ticket-view':
+                openTicket(id);
+                break;
+            case 'ticket-reopen':
+                reopenTicket(id);
+                break;
+            case 'ticket-view-all':
+                ticketFilters.attention = 'all';
+                render();
+                break;
+            case 'ticket-select-view':
+                ticketFilters.view = role === 'admin' && id === 'resolved' ? 'resolved' : id === 'shared' ? 'shared' : role === 'admin' ? 'all' : 'mine';
+                ticketFilters.attention = 'all';
+                ticketFilters.status = 'all';
+                render();
+                break;
+            case 'ticket-view-attention':
+                ticketFilters.attention = 'needs';
+                ticketFilters.view = role === 'admin' ? 'all' : 'mine';
+                render();
+                break;
+            case 'ticket-clear-filters':
+                ticketFilters = { query: '', status: 'all', category: 'all', priority: 'all', department: 'all', attention: 'all', view: role === 'admin' ? 'all' : 'mine' };
                 render();
                 break;
             case 'view-audit':
@@ -2379,6 +3012,14 @@
                 go('neworder');
                 break;
             }
+            case 'menu-category':
+                menuCategory = id;
+                render();
+                break;
+            case 'menu-category-back':
+                menuCategory = null;
+                render();
+                break;
             case 'cart-plus':
                 cart[id] = (cart[id] || 0) + 1;
                 render();
@@ -2440,14 +3081,41 @@
             filter = e.target.value;
             render();
         }
+        else if (e.target.matches('[data-ticket-filter]')) {
+            ticketFilters[e.target.dataset.ticketFilter] = e.target.value;
+            render();
+        }
         else if (e.target.matches('[data-audit-filter]')) {
             auditFilters[e.target.dataset.auditFilter] = e.target.value;
             auditPageNum = 1;
             render();
         }
+        else if (e.target.id === 'ticket-category') {
+            const field = document.getElementById('ticket-location-field');
+            const location = document.getElementById('ticket-location');
+            const needed = e.target.value === 'operational';
+            if (field) field.hidden = !needed;
+            if (location) location.required = needed;
+            const suggested = ticketDefaultVisibility(e.target.value);
+            const input = document.querySelector(`#ticket-create-form input[name="visibility"][value="${suggested}"]`);
+            if (input) input.checked = true;
+            syncTicketVisibilityInfo();
+        }
+        else if (e.target.matches('#ticket-create-form input[name="visibility"]')) {
+            syncTicketVisibilityInfo();
+        }
+        else if (e.target.id === 'manage-ticket-visibility') {
+            const original = data.tickets.find(t => t.id === document.querySelector('#ticket-manage-form input[name="id"]')?.value);
+            const changed = original && ticketVisibility(original) !== e.target.value;
+            const wrap = document.getElementById('ticket-visibility-reason-wrap');
+            const reason = document.getElementById('ticket-visibility-reason');
+            if (wrap) wrap.hidden = !changed;
+            if (reason) reason.required = !!changed;
+        }
         else if (e.target.id === 'table-choice') {
             currentTable = e.target.value;
             cart = {};
+            menuCategory = null;
             render();
         }
         else if (e.target.id === 'svc-id') {
@@ -2478,6 +3146,17 @@
                 const detail = document.getElementById('help-center-detail');
                 if (detail)
                     detail.innerHTML = '<div class="help-center-placeholder"><h3>Choose a help topic</h3><p>Choose a question from the results to read it here.</p></div>';
+            }
+            return;
+        }
+        if (e.target.matches('[data-ticket-search]')) {
+            const pos = e.target.selectionStart;
+            ticketFilters.query = e.target.value;
+            render();
+            const input = document.querySelector('[data-ticket-search]');
+            if (input) {
+                input.focus();
+                input.setSelectionRange(pos, pos);
             }
             return;
         }
@@ -2517,6 +3196,18 @@
         e.preventDefault();
         const v = Object.fromEntries(new FormData(form).entries());
         switch (formId) {
+            case 'ticket-create-form':
+                submitTicket(v);
+                break;
+            case 'ticket-reply-form':
+                replyTicket(v);
+                break;
+            case 'ticket-manage-form':
+                manageTicket(v);
+                break;
+            case 'ticket-public-update-form':
+                publishTicketUpdate(v);
+                break;
             case 'remove-item-form': {
                 applyRemoval(String(v.kind || ''), String(v.id || ''), String(v.reason || ''));
                 break;
@@ -2874,6 +3565,7 @@
             }
             else {
                 syncBell();
+                syncTicketSidebar();
             }
         }
     });
