@@ -1665,9 +1665,11 @@
         search = '';
         mobile = false;
         render();
+        if(helpMode==='panel' && smartView==='home' && !helpSelected) helpRenderRoot();
         window.scrollTo(0, 0);
+        if (helpMode === 'adaptive') requestAnimationFrame(smartGuideSync);
     }
-    function setRole(r) {
+    function setRole(r, preserveSmartHelp = false) {
         if (!navs[r])
             return;
         if (!hasAccess(r)) { toast('This employee is not authorized for that dashboard.', true); return; }
@@ -1676,7 +1678,11 @@
         bellOpen = false;
         notificationShow = 'all';
         go('dashboard');
-        helpOnRoleChange();
+        if (preserveSmartHelp) {
+            helpSelected = '';
+            smart744LastVerified=null;smart744Transcript=[];if(smartQuestion)smartRunQuestion(smartQuestion);else smartAnswer=null;
+            if (helpMode === 'panel') helpRenderRoot();
+        } else helpOnRoleChange();
     }
     const adminFamilyMeta = {
         system: {kicker:'SYSTEM MANAGEMENT'},
@@ -1822,6 +1828,8 @@
         helpInsertHints(app);
         syncBell();
         if (helpMode === 'guide') requestAnimationFrame(helpPositionSpotlight);
+        if (helpMode === 'adaptive') requestAnimationFrame(smartGuideSync);
+        if (helpMode === 'explore') requestAnimationFrame(()=>{smartExploreItems=smartExploreCollect();smartExploreSelected=-1;smartExploreRender();});
         if (route === 'help' && helpSelected) {
             const target = document.getElementById('help-center-detail');
             if (target)
@@ -2029,7 +2037,7 @@
         'Set the rate, check its active status, and Save.'
     ], 'For Extra Towels, use quantity only. For Motorbike Rental, enable the duration field.', ['system', 'services'], 'service catalog duration units price towels rental admin');
     helpAdd('ad-users', 'admin', 'tasks', 'Manage users and roles', 'Manage employees and authorized Front Desk/Restaurant dashboards without granting Admin permissions.', [
-        'Open System Management → Users & Roles.',
+        'Open System Management → Employees & Roles.',
         'Add employees and select their permitted Front Desk and Restaurant dashboards.',
         'In this prototype, select a demo employee in the header to see their available dashboards.'
     ], 'Demo account switching is not authentication. Production role checks need a secure backend.', ['users', 'system'], 'users permissions staff employee account login');
@@ -2099,6 +2107,86 @@
         'Change status, priority or visibility as needed; changing visibility requires a reason recorded in Audit Log.',
         'Keep resolved tickets for future reference; important changes are recorded in Audit Log.'
     ], 'Ticket history is preserved. Browser-only V1 tickets are not synchronized between separate computers.', ['tickets'], 'ticket support admin request reply status priority filter');
+
+    helpAdd('fd-receipts-new', 'frontdesk', 'tasks', 'Find and reprint a Front Desk receipt', 'Look up a recorded payment and print its existing acknowledgement without taking another payment.', [
+        'Open Receipt History from Front Desk.',
+        'Search or filter the saved payments to locate the correct transaction.',
+        'Select View/Reprint to inspect the existing payment acknowledgement.',
+        'Choose the appropriate print format and print only if needed.'
+    ], 'Reprinting does not record another payment. If a payment result is uncertain, verify Receipt History before trying to collect again.', ['receipts'], 'receipt history print reprint duplicate transaction acknowledgement proof paid');
+    helpAdd('rs-receipts-new', 'restaurant', 'tasks', 'Find and reprint a Restaurant receipt', 'Review saved restaurant payment records and print a prior acknowledgement.', [
+        'Open Receipt History in the Restaurant workspace.',
+        'Locate the correct table payment using the available search and filters.',
+        'Open View/Reprint for the original recorded payment.',
+        'Preview the receipt and choose a printing format.'
+    ], 'Receipt reprinting does not settle an order again. Verify payment status first if a transaction is uncertain.', ['receipts'], 'receipt history reprint printer confirmation cash order payment');
+    helpAdd('ad-receipts-new', 'admin', 'tasks', 'Review payment receipts across departments', 'Find Front Desk and Restaurant acknowledgements in one receipt archive.', [
+        'Open Receipt History from System Management.',
+        'Use search, date and department filters to narrow the records.',
+        'Select View/Reprint on the relevant saved payment.',
+        'Review the original transaction without creating a new settlement.'
+    ], 'Historical receipt details reflect their saved payment records. The browser prototype is not permanent backed-up accounting storage.', ['receipts'], 'receipt history reprint export department print audit');
+    helpAdd('ad-builder-new', 'admin', 'tasks', 'Customize a receipt in Receipt Builder', 'Edit the printable layout for a department and paper format without changing payment amounts.', [
+        'Open System Management, then Receipt Builder.',
+        'Choose Restaurant or Front Desk and select 58 mm, 80 mm, or A4.',
+        'Add or select blocks and use the preview to review their appearance.',
+        'Save Draft or Save as Copy while experimenting.',
+        'Use Publish Template when the layout is ready for future receipts.'
+    ], 'Receipt Builder changes presentation, not recorded money or tax calculations. Save changes before leaving the editor.', ['receiptbuilder'], 'receipt builder customize template preview publish draft design thermal 58 80 a4');
+    helpAdd('ad-receipt-settings-new', 'admin', 'tasks', 'Update Receipt Settings and resort branding', 'Configure the resort identity and tax profile used for payment acknowledgements.', [
+        'Open System Management, then Receipt Settings.',
+        'Review resort name, address, contact information and other business details.',
+        'Check tax configuration against the resort actual registration.',
+        'Save the settings and preview a receipt to verify the display.'
+    ], 'Do not guess official tax registration data. This browser prototype is not a certified invoicing system.', ['receiptsettings'], 'receipt settings logo business profile tin branding contact vat tax');
+    helpAdd('ad-discount-new', 'admin', 'tasks', 'Manage promotional and statutory discount settings', 'Review discount options and eligibility rules for resortOS.', [
+        'Open System Management and select Discount Management.',
+        'Review active promotional rules and the supported statutory discount workflow.',
+        'Check each rule and eligible item classification before making changes.',
+        'Use available management controls to save authorized adjustments.',
+        'Review resulting transactions and discounts in the appropriate records.'
+    ], 'Senior Citizen and PWD eligibility and VAT treatment must follow applicable requirements; resortOS does not verify legal entitlement automatically.', ['discounts'], 'discount management senior citizen pwd promo promotion voucher eligibility rates');
+    helpAdd('rs-discount-new', 'restaurant', 'tasks', 'Apply a Senior Citizen or PWD discount to an order', 'Apply supported discounts before the restaurant bill is settled.', [
+        'Open the relevant pending or awaiting-payment order or its bill.',
+        'Choose Apply Discount.',
+        'Select the appropriate supported discount and enter the requested eligible information.',
+        'Review the calculated discount breakdown and authorize the change.',
+        'Return to checkout and verify the updated amount before recording payment.'
+    ], 'Do not apply discounts after payment in this workflow. Use only verified entitlement and correct eligible items.', ['orders','tables'], 'sc pwd senior citizen discount exemption bill VAT calculate apply');
+    helpAdd('fd-late-discount-new', 'frontdesk', 'tasks', 'Apply a permitted late discount to a room charge', 'Adjust an eligible unpaid room-posted restaurant charge before Front Desk settlement.', [
+        'Open an active stay and review its outstanding room charges.',
+        'Locate a qualifying unpaid Restaurant charge.',
+        'If your staff capability allows it, choose Apply Late Discount.',
+        'Review the verified statutory eligibility and confirmation.',
+        'Check the revised balance before recording any settlement.'
+    ], 'Late discount controls are permission-restricted and apply only to eligible unpaid charges. Do not retry a payment until its outcome is verified.', ['rooms','charges','checkout'], 'late discount room posted restaurant senior citizen pwd unpaid authorization');
+    helpAdd('ad-methods-new', 'admin', 'tasks', 'Configure cash and non-cash payment methods', 'Maintain shared external payment methods used by Front Desk and Restaurant.', [
+        'Open System Management and select Payment Methods.',
+        'Find or add the applicable method.',
+        'Classify it as Cash or Non-cash, then set its active status.',
+        'Save your changes and verify the method in the payment form.'
+    ], 'Only methods classified as Cash calculate change. Non-cash received amounts must not exceed the balance due.', ['payments'], 'gcash bank transfer cash card payment method classification change noncash');
+    helpAdd('fd-payment-error-new', 'frontdesk', 'fixes', 'Why does a Front Desk payment amount fail?', 'Understand amount and method validation before recording a settlement.', [
+        'Check the outstanding balance on the active charge or checkout.',
+        'Confirm that the selected payment method is active and correct.',
+        'For non-cash payments, the received amount cannot exceed the amount due.',
+        'For cash payments, check the tendered amount and any calculated change.',
+        'If you already attempted payment, check Receipt History before retrying.'
+    ], 'A rejected form is not proof of a recorded payment. If the result is uncertain, verify payment records before entering another transaction.', ['charges','checkout','receipts'], 'invalid amount check received method payment fail error cash gcash tendered');
+    helpAdd('rs-payment-error-new', 'restaurant', 'fixes', 'Why can’t I complete a Restaurant payment?', 'Check common restaurant checkout validation problems safely.', [
+        'Confirm the order is ready for payment and review the final amount after discounts.',
+        'Select an active payment method.',
+        'For non-cash payment, do not enter more than the balance due.',
+        'For cash, check that the tendered amount covers the amount due.',
+        'If payment might have succeeded, inspect Receipt History before retrying.'
+    ], 'Never record the payment twice because its confirmation window failed to appear.', ['tables','orders','receipts'], 'cash payment received invalid method error checkout failed confirm gcash');
+    helpAdd('ad-help-navigation-new', 'admin', 'start', 'Get help while managing resortOS', 'Use the Help button to find answers and navigate to supported features.', [
+        'Click Help in the upper right of the current page.',
+        'Review suggestions related to your current screen.',
+        'Ask a question or browse the existing Help Articles.',
+        'Open the detailed article or select a relevant destination.',
+        'If guidance cannot resolve the issue, create a Support & Issues ticket.'
+    ], 'Live navigation guides and Explore This Page are available in SmartHelp.', ['system'], 'smarthelp search assistant where how help article questions');
     const HELP_RELATIONSHIPS = {
         'fd-checkout': ['fd-payment', 'fd-checkout-block', 'fd-charges'],
         'fd-payment': ['fd-outstanding', 'fd-checkout'],
@@ -2116,6 +2204,2214 @@
     for (const article of HELP_ARTICLES) {
         article.related = (HELP_RELATIONSHIPS[article.id] || []).filter(id => HELP_ARTICLES.some(x => x.id === id && x.role === article.role));
     }
+
+
+    helpAdd('fd-checkout-troubleshoot-v5','frontdesk','fixes','Checkout cannot proceed or the room still has a balance','Check the active stay, unpaid extra charges, and recorded settlements before attempting checkout.',[
+        'Open Checkout and verify you selected the correct active stay.',
+        'Review the outstanding charges. Accommodation payments are outside resortOS.',
+        'If a recent settlement seemed to fail, inspect Receipt History before recording any further payment.',
+        'Only complete checkout after the app confirms the required balance and guest stay status.'
+    ],'Never create a second payment merely because the confirmation window did not appear.',['checkout','balances'],'cannot checkout unpaid partial balance receipt duplicate');
+    helpAdd('fd-charge-unavailable-v5','frontdesk','fixes','Why can’t I post an additional service?','A room must have an eligible active stay before it can receive additional charges.',[
+        'Confirm that the room has an active stay and the room is not inactive.',
+        'Check that the service is active and quantity or duration fields are filled correctly.',
+        'Review the amount calculated before saving.',
+        'If the charge may already have saved, inspect the stay charge history before retrying.'
+    ],'Direct cash sales and accommodation fees are not entered as additional room charges.',['charges','addservice'],'service disabled duration quantity room occupied posted error');
+    helpAdd('fd-receipt-troubleshoot-v5','frontdesk','fixes','Payment receipt is missing or will not reprint','Find the existing settlement in Receipt History before treating a missing preview as a failed payment.',[
+        'Open Receipt History and clear search or date filters.',
+        'Search the payment reference, room, or date.',
+        'Use View/Reprint on the existing payment. This does not collect another payment.',
+        'If the payment record is missing, check the stay balance and audit history before asking Admin to investigate.'
+    ],'A blank preview is not proof that money was not recorded.',['receipts','checkout'],'missing receipt payment reprint preview printed blank');
+    helpAdd('fd-late-discount-troubleshoot-v5','frontdesk','fixes','Late discount is unavailable for a room charge','Late statutory discounts require eligible unpaid restaurant charges and the necessary staff permission.',[
+        'Open the active stay and review its room-posted restaurant charges.',
+        'Confirm the charge is eligible, unpaid, and not already discounted in a conflicting way.',
+        'Ask an authorized staff member to review the required supporting details and discount permission.',
+        'Never change the guest bill through a manual workaround.'
+    ],'Only eligible purchases qualify; follow your organization’s discount compliance policy.',['charges','checkout'],'late discount eligible permission unpaid restaurant senior pwd');
+    helpAdd('rs-checkout-troubleshoot-v5','restaurant','fixes','Checkout button is unavailable for a table','A restaurant order must be in the correct checkout state before staff can record or post its bill.',[
+        'Open Tables and locate the intended active table order.',
+        'Review the order items and confirm the table is ready to pay.',
+        'Apply authorized eligible discounts before settlement.',
+        'Choose restaurant payment or room posting only after verifying the correct destination and total.'
+    ],'Never use another table’s order to bypass an unavailable action.',['tables','orders'],'checkout table unavailable pending awaiting payment ready order');
+    helpAdd('rs-room-post-troubleshoot-v5','restaurant','fixes','Cannot post a restaurant order to a guest room','The destination room must have an eligible active stay, and the order must be ready for posting.',[
+        'Open the intended table and review its bill.',
+        'Verify an eligible occupied room and that the guest authorized room posting.',
+        'Confirm the correct room in the posting dialog.',
+        'If posting seemed to fail, inspect Room Charges before trying a second time.'
+    ],'Room posting is not payment collection; Front Desk settles the posted balance later.',['roomcharges','tables'],'cannot post room guest active stay occupied posting');
+    helpAdd('rs-discount-troubleshoot-v5','restaurant','fixes','Why was a restaurant discount rejected?','Discounts depend on an eligible purchase, valid beneficiary details, permissions and applicable discount rules.',[
+        'Check the order is still unpaid and eligible for the selected discount.',
+        'Review the beneficiary, number of eligible diners or items, and any required documentation.',
+        'Read the discount preview before confirming.',
+        'If the system rejects the discount, do not add a manual negative-price menu item as a workaround.'
+    ],'Eligibility and tax calculations should be reviewed according to applicable resort policy and law.',['orders','tables'],'discount invalid eligible proof pwd senior percentage');
+    helpAdd('rs-cart-troubleshoot-v5','restaurant','fixes','Restaurant cart items disappeared after changing tables','Switching tables can reset the currently unsaved ordering draft.',[
+        'Select the intended table before choosing items.',
+        'Add menu items and check quantities.',
+        'Save the table order before moving to another table.',
+        'Check Orders to see whether a prior order was actually saved.'
+    ],'An unsaved draft is not a confirmed order.',['neworder','tables'],'cart reset vanished items switch table draft unsaved');
+    helpAdd('rs-receipt-troubleshoot-v5','restaurant','fixes','Restaurant payment recorded but receipt is not visible','Use Receipt History to verify the existing payment before repeating checkout.',[
+        'Open Restaurant Receipt History and clear any active filters.',
+        'Look for the order or payment reference.',
+        'If the payment exists, choose View/Reprint instead of collecting payment again.',
+        'If you cannot find the record, request management assistance with the transaction reference.'
+    ],'Do not pay the same restaurant order twice to force a receipt preview.',['receipts','tables'],'receipt reprint restaurant payment recorded absent');
+    helpAdd('ad-employee-access-troubleshoot-v5','admin','fixes','Staff member cannot access the expected dashboard','Inspect the employee’s active status and department access, then make only authorized changes.',[
+        'Open System Management → Employees & Roles.',
+        'Find the correct employee account and inspect its active status.',
+        'Check the operational dashboard permissions.',
+        'Save an authorized correction, then verify the employee can select the intended dashboard.'
+    ],'Cross-department operational access does not grant Admin privileges.',['users'],'employee forbidden permission inactive restaurant front desk dashboard');
+    helpAdd('ad-payment-method-troubleshoot-v5','admin','fixes','Payment method does not appear at checkout','Inactive payment methods are not offered for new payments.',[
+        'Open System Management → Payment Methods.',
+        'Find the desired payment method and check whether it is active.',
+        'Confirm it has the correct Cash or Non-cash classification.',
+        'Save an authorized correction, then reopen the payment selection.'
+    ],'Do not change old recorded payment methods or historic receipts.',['payments'],'gcash unavailable payment method hidden cash classification');
+    helpAdd('ad-receipt-builder-troubleshoot-v5','admin','fixes','Receipt Builder changes are not appearing on printed receipts','Saved drafts and published layouts can differ; check the active format and publication state.',[
+        'Open Receipt Builder and confirm Restaurant or Front Desk and the correct 58 mm, 80 mm or A4 format.',
+        'Review and save the working draft.',
+        'Publish the intended layout using the available controls.',
+        'Preview the correct receipt format and confirm the published template before reprinting.'
+    ],'Avoid discarding an unsaved Receipt Builder draft when leaving this page.',['receiptbuilder'],'receipt builder template draft publish not update print');
+    helpAdd('ad-tickets-troubleshoot-v5','admin','fixes','Support ticket or update is missing','Verify filters and visibility before assuming a ticket was lost.',[
+        'Open Support & Issues and clear search or status filters.',
+        'Check active and resolved views as applicable.',
+        'Confirm the creator and visibility of the ticket.',
+        'Review its history to see updates, assignments and resolution.'
+    ],'Only authorized Admin employees can resolve tickets.',['tickets'],'ticket missing resolved filter notification update');
+    helpAdd('ad-discount-troubleshoot-v5','admin','fixes','Discount or promotion is not being offered','Check eligibility, promotion activity and validity dates before changing configuration.',[
+        'Open Discount Management.',
+        'Review whether the promotion is active and its start and end dates.',
+        'Check the intended menu or category scope.',
+        'Verify the purchasing workflow uses an eligible order; review audit history if an adjustment was already saved.'
+    ],'Existing transactions and applied statutory discounts require careful review.',['discounts'],'promotion inactive expiration wrong item eligible discount');
+
+    let smartView = 'home', smartQuestion = '', smartAnswer = null, smartRecent = [], smartAnswerBeforeArticle = 'home';
+    let smartAskCategory = 'foryou', smartAskDraft = '';
+    let smartLibrarySection='articles', smartGuideSection='tasks', smartHelpExpanded=false;
+
+    let smartLastError=null, smartSupportDraft=null;
+    const smartRecoveryRules=[
+        {id:'payment',pattern:/amount received|payment method|non.cash|tendered|amount.*(invalid|exceed)|payment.*(invalid|failed)/i,title:'Payment amount or method needs attention',reason:'resortOS rejected the entered payment details. This does not confirm that a payment was recorded.',fix:['Check the outstanding balance and selected payment method.','Cash may allow change, but non-cash payments cannot exceed the amount due.','Before submitting again, check Receipt History if the result is uncertain.'],roles:{frontdesk:'fd-payment-error-new',restaurant:'rs-payment-error-new'}},
+        {id:'room',pattern:/room.*(unavailable|occupied|inactive|stay)|stay.*(unavailable|active)/i,title:'Room or stay is not eligible',reason:'The selected room or stay is not available for the requested action.',fix:['Verify the room and active stay in Front Desk.','Do not select a different guest room merely to bypass this restriction.'],roles:{frontdesk:'fd-charge-unavailable-v5',restaurant:'rs-room-post-troubleshoot-v5'}},
+        {id:'discount',pattern:/discount|beneficiary|eligible|statutory|promotion/i,title:'Discount eligibility needs review',reason:'The discount could not be accepted under the current application rules.',fix:['Confirm the order or charge is unpaid and eligible.','Review permissions, beneficiary details and the discount preview.','Do not create a manual negative charge as a workaround.'],roles:{restaurant:'rs-discount-troubleshoot-v5',frontdesk:'fd-late-discount-troubleshoot-v5',admin:'ad-discount-troubleshoot-v5'}},
+        {id:'permission',pattern:/access required|not authorized|permission|forbidden|inactive staff/i,title:'Access is restricted',reason:'The current employee identity is not authorized for this action.',fix:['Check that you are using the intended authorized dashboard.','Ask an Admin to review staff status and operational permissions.'],roles:{admin:'ad-employee-access-troubleshoot-v5'}},
+        {id:'order',pattern:/cart|table.*(unavailable|occupied)|order.*(save|valid|item)/i,title:'Restaurant order needs review',reason:'The order is not in the required state for that action.',fix:['Confirm the correct table before adding items.','Review items and quantities, then check whether an order was already saved.'],roles:{restaurant:'rs-cart-troubleshoot-v5'}},
+        {id:'required',pattern:/required|complete.*field|valid.*(name|quantity|date|range)|subject.*description/i,title:'Required information is missing or invalid',reason:'The application needs corrected information before it can save.',fix:['Review the highlighted or required form fields.','Correct invalid values and check the entries before saving again.'],roles:{frontdesk:'fd-charge-unavailable-v5',restaurant:'rs-checkout-troubleshoot-v5',admin:'ad-employee-access-troubleshoot-v5'}}
+    ];
+    function smartRecoveryMatch(message){return smartRecoveryRules.find(r=>r.pattern.test(String(message||'')))||null;}
+    function smartRecoveryMarkup(message,compact=false){
+        const rule=smartRecoveryMatch(message), article=rule&&helpAllowed(rule.roles[role]);
+        if(!message)return `<div class="smart-fallback"><strong>No recent validation error detected</strong><p>SmartHelp can explain a validation message after resortOS displays it. You can also search the Problems & Solutions articles or describe the issue to Support.</p></div>`;
+        return `<section class="smart-recovery" role="status"><span class="smart-recovery-eyebrow">APPLICATION MESSAGE</span><p class="smart-recovery-quote">${esc(String(message).slice(0,180))}</p><h3>${esc(rule?.title||'Let’s review this issue')}</h3><p>${esc(rule?.reason||'resortOS reported an error, but SmartHelp does not have a verified explanation for this exact message. Do not assume the operation succeeded or failed without checking its records.')}</p>${rule?`<ol>${rule.fix.map(x=>`<li>${esc(x)}</li>`).join('')}</ol>`:''}<div class="smart-recovery-actions">${article?`<button type="button" class="smart-btn" data-action="help-article" data-id="${esc(article.id)}">Read troubleshooting article</button>`:''}<button type="button" class="smart-btn smart-primary" data-action="help-smart-support">Ask Support</button></div></section>`;
+    }
+    function smartTroubleMarkup(){
+        const latest=smartLastError&&smartLastError.role===role&&Date.now()-smartLastError.at<1200000?smartLastError:null;
+        const fixes=HELP_ARTICLES.filter(a=>a.role===role&&a.category==='fixes');
+        return `<div class="smart-panel-topline"><h2>Troubleshooting</h2><p>Explain real resortOS validation messages and find a safe way forward.</p></div><button type="button" class="smart-ask-back" data-action="help-smart-tab" data-id="ask">← Back to Ask SmartHelp</button>${smartRecoveryMarkup(latest?.message||'')}<section class="smart-section"><h3>Common problems</h3>${fixes.map(smartTopicMarkup).join('')}</section><button type="button" class="smart-support" data-action="help-smart-support">Problem still unresolved? Prepare a support ticket →</button>`;
+    }
+    function smartSupportStart(){
+        if(document.querySelector('#modal-root .modal')) {toast('Finish or close the current window before creating a support ticket. Your current details are preserved.',true);return;}
+        const guide=smartGuide&&smartGuides.find(g=>g.id===smartGuide.id);
+        const question=String(smartQuestion||smartGuide?.inlineQuestion||'').trim();
+        const context=guide?.title||helpAllowed(helpSelected)?.title||helpNavName(route);
+        const summary=question?question.slice(0,95):smartLastError?.role===role&&Date.now()-smartLastError.at<1200000?'A recent resortOS validation message needs help':'Help using '+context;
+        smartSupportDraft={role,context:String(context).slice(0,85),question:summary,route};
+        if(helpMode==='adaptive'&&smartGuide)smartGuidePause();
+        openNewTicket();
+    }
+
+    const smartNlpAliases = {
+        employees:'employee', employee:'employee', staff:'employee', workers:'employee', worker:'employee', personnel:'employee', cashier:'employee', cashiers:'employee', users:'employee', colleague:'employee', teammates:'employee', teammate:'employee', accounts:'account',
+        add:'create', adding:'create', added:'create', create:'create', creating:'create', created:'create', register:'create', registering:'create', setup:'create', set:'create', new:'create', make:'create', making:'create', apply:'create', applying:'create', record:'create', recording:'create', hire:'create', insert:'create',
+        update:'edit', modify:'edit', change:'edit', changing:'edit', customize:'edit', adjust:'edit', rename:'edit', modify:'edit', edited:'edit', editing:'edit',
+        remove:'deactivate', delete:'deactivate', deactivate:'deactivate', disable:'deactivate', disablement:'deactivate', inactive:'inactive', terminate:'deactivate', archive:'deactivate',
+        enable:'activate', reactivate:'activate', restore:'activate', activated:'activate',
+        find:'find', locate:'find', search:'find', look:'find', view:'find', see:'find', show:'find', where:'find', access:'find', open:'find',
+        print:'reprint', printing:'reprint', printed:'reprint', reprint:'reprint', duplicate:'reprint',
+        bills:'bill', billing:'bill', orders:'order', ordered:'order', tables:'table', meals:'menu', food:'menu', dishes:'menu', items:'item', categories:'category',
+        rooms:'room', stays:'stay', guests:'guest', reservations:'stay', checkin:'checkin', checkout:'checkout',
+        receipts:'receipt', acknowledgement:'receipt', acknowledgment:'receipt', invoices:'receipt',
+        payments:'payment', paying:'payment', pay:'payment', paid:'payment', settle:'payment', settling:'payment', settlement:'payment', collect:'payment', collecting:'payment', tender:'payment',
+        balances:'balance', outstanding:'balance', unpaid:'balance', discounts:'discount', discounted:'discount', pwd:'discount', senior:'discount', seniors:'discount', vat:'vat', vatfree:'vat',
+        promotions:'promotion', promos:'promotion', promo:'promotion',
+        errors:'error', erroneous:'error', failed:'error', fails:'error', failing:'error', invalid:'error', broken:'error', stuck:'error', problem:'error', problems:'error', wrong:'error', issue:'issue', issues:'issue',
+        cannot:'cannot', cant:'cannot', couldnt:'cannot', unable:'cannot', wont:'cannot', doesnt:'cannot', denied:'cannot',
+        methods:'method', gcash:'gcash', transfer:'bank', debit:'card', credit:'card',
+        tickets:'ticket', complaints:'ticket', notifications:'notification', alerts:'notification', bell:'notification',
+        permissions:'permission', privileges:'permission', roles:'permission', rights:'permission',
+        reports:'audit', logs:'audit', histories:'history', history:'history',
+        services:'service', towels:'service', laundry:'service', rental:'service', charges:'charge', charged:'charge',
+        settings:'settings', templates:'template', layouts:'layout', builder:'builder'
+    };
+    const smartNlpPhrases = [
+        [/\bfront\s+desk\b/g,'frontdesk'],[/\bcheck[ -]?in\b/g,'checkin'],[/\bcheck[ -]?out\b/g,'checkout'],
+        [/\breceipt\s+builder\b/g,'receiptbuilder'],[/\breceipt\s+settings\b/g,'receiptsettings'],
+        [/\bpayment\s+methods?\b/g,'paymentmethod'],[/\broom\s+charges?\b/g,'roomcharge'],
+        [/\broom\s+(?:postings?|posts?)\b/g,'roompost'],[/\bsenior\s+citizen\b/g,'senior'],
+        [/\b(?:support\s+and\s+issues|support\s+ticket)\b/g,'ticket'],[/\bteam\s+member\b/g,'employee'],
+        [/\b(?:set\s+up|setting\s+up)\b/g,'setup'],[/\b(?:log\s+in|sign\s+in)\b/g,'login'],
+        [/\b(?:money\s+back|cash\s+change)\b/g,'change'],[/\b(?:late\s+discount)\b/g,'latediscount']
+    ];
+    const smartIntentDefinitions = [
+        {id:'employee.create',topic:'employee',actions:['create'],objects:['employee'],articles:{admin:'ad-users'},guide:'op-ad-employee',priority:9,answer:'Open System Management → Employees & Roles, choose Add Employee, enter staff details, assign permitted departments, and review before saving.'},
+        {id:'employee.deactivate',topic:'employee',actions:['deactivate'],objects:['employee'],articles:{admin:'ad-remove'},guide:'ad-users',priority:9,answer:'In Employees & Roles, locate the staff member and use the available Active/Inactive control. Historical records must be retained.'},
+        {id:'employee.activate',topic:'employee',actions:['activate'],objects:['employee'],articles:{admin:'ad-users'},guide:'ad-users',priority:9,answer:'An Admin can open Employees & Roles, find the inactive staff member, and reactivate their access when appropriate.'},
+        {id:'employee.permissions',topic:'employee',actions:['permission','edit','manage','find'],objects:['employee','permission'],articles:{admin:'ad-users'},guide:'ad-users',priority:8,answer:'Manage Front Desk and Restaurant access through System Management → Employees & Roles. Regular staff must not receive Admin privileges.'},
+        {id:'employee.find',topic:'employee',actions:['find','manage'],objects:['employee'],articles:{admin:'ad-users'},guide:'ad-users',priority:3},
+        {id:'receipt.builder',topic:'receiptbuilder',objects:['receiptbuilder','template','layout'],actions:['edit','create','find','manage','design','preview'],articles:{admin:'ad-builder-new'},guide:'ad-builder',priority:10},
+        {id:'receipt.settings',topic:'receiptsettings',objects:['receiptsettings','branding'],actions:['edit','find','manage','create'],articles:{admin:'ad-receipt-settings-new'},guide:'op-ad-receipt-settings',priority:10},
+        {id:'receipt.reprint',topic:'receipt',objects:['receipt'],actions:['reprint','find','history'],articles:{frontdesk:'fd-receipts-new',restaurant:'rs-receipts-new',admin:'ad-receipts-new'},guides:{frontdesk:'op-fd-reprint',restaurant:'op-rs-reprint',admin:'ad-receipts'},priority:5},
+        {id:'receipt.error',topic:'receipt',objects:['receipt'],actions:['error','cannot'],articles:{frontdesk:'fd-receipt-troubleshoot-v5',restaurant:'rs-receipts-new',admin:'ad-receipts-new'},priority:11},
+        {id:'payment.method',topic:'payment',objects:['paymentmethod','method'],actions:['create','edit','manage','find','activate','deactivate'],articles:{admin:'ad-methods-new'},guide:'ad-methods',priority:12},
+        {id:'payment.error',topic:'payment',objects:['payment','balance'],actions:['error','cannot'],articles:{frontdesk:'fd-payment-error-new',restaurant:'rs-payment-error-new',admin:'ad-payment-troubleshoot-v5'},priority:11},
+        {id:'payment.record',topic:'payment',objects:['payment','balance'],actions:['create','payment','find'],articles:{frontdesk:'fd-payment',restaurant:'rs-cash'},guides:{frontdesk:'op-fd-payment',restaurant:'op-rs-payment'},priority:4},
+        {id:'discount.apply',topic:'discount',objects:['discount','latediscount'],actions:['create','edit','find','manage'],articles:{frontdesk:'fd-late-discount-new',restaurant:'rs-discount-new',admin:'ad-discount-new'},guides:{restaurant:'op-rs-discount',frontdesk:'fd-charges',admin:'ad-discounts'},priority:5},
+        {id:'discount.error',topic:'discount',objects:['discount','latediscount'],actions:['error','cannot'],articles:{frontdesk:'fd-late-discount-troubleshoot-v5',restaurant:'rs-discount-troubleshoot-v5',admin:'ad-discount-troubleshoot-v5'},priority:11},
+        {id:'promotion.manage',topic:'promotion',objects:['promotion'],actions:['create','edit','manage','find','deactivate'],articles:{admin:'ad-discount-new'},guide:'op-ad-promotion',priority:8},
+        {id:'stay.create',topic:'stay',objects:['stay','checkin','guest'],actions:['create','checkin'],articles:{frontdesk:'fd-register'},guide:'op-fd-register',priority:7},
+        {id:'stay.checkout',topic:'stay',objects:['checkout','stay'],actions:['checkout','payment','find'],articles:{frontdesk:'fd-checkout'},guide:'fd-checkout',priority:6},
+        {id:'stay.checkout-error',topic:'stay',objects:['checkout'],actions:['error','cannot'],articles:{frontdesk:'fd-checkout-troubleshoot-v5'},priority:12},
+        {id:'room.status',topic:'room',objects:['room'],actions:['find','manage','status'],articles:{frontdesk:'fd-room-status',admin:'ad-rooms'},guides:{frontdesk:'fd-rooms',admin:'ad-rooms'},priority:3},
+        {id:'room.create',topic:'room',objects:['room'],actions:['create','edit','activate','deactivate'],articles:{admin:'ad-rooms'},guide:'ad-rooms',priority:8},
+        {id:'charge.post',topic:'charge',objects:['charge','service','roomcharge'],actions:['create','manage','payment'],articles:{frontdesk:'fd-service'},guide:'op-fd-service',priority:4},
+        {id:'order.create',topic:'order',objects:['order','menu','item','table'],actions:['create'],articles:{restaurant:'rs-start'},guide:'op-rs-order',priority:3},
+        {id:'order.additems',topic:'order',objects:['order','item','menu','cart'],actions:['create','edit'],articles:{restaurant:'rs-add'},guide:'op-rs-order',priority:5},
+        {id:'order.void',topic:'order',objects:['order'],actions:['deactivate','void','cancel'],articles:{restaurant:'rs-void'},priority:11},
+        {id:'order.roompost',topic:'order',objects:['roompost','roomcharge','order'],actions:['post','create'],articles:{restaurant:'rs-post'},guide:'op-rs-room',priority:10},
+        {id:'table.manage',topic:'table',objects:['table'],actions:['create','edit','deactivate','activate'],articles:{admin:'ad-tables'},priority:7},
+        {id:'table.status',topic:'table',objects:['table'],actions:['find','manage','status'],articles:{restaurant:'rs-table-status'},guide:'rs-tables',priority:2},
+        {id:'menu.manage',topic:'menu',objects:['menu','item','category'],actions:['edit','create','manage','deactivate','activate'],articles:{admin:'ad-menu'},guide:'ad-menu',priority:7},
+        {id:'service.manage',topic:'service',objects:['service'],actions:['create','edit','manage'],articles:{admin:'ad-service',frontdesk:'fd-service'},guides:{frontdesk:'op-fd-service'},priority:4},
+        {id:'audit.search',topic:'audit',objects:['audit','history'],actions:['find','manage','reprint'],articles:{admin:'ad-audit'},guide:'ad-audit',priority:6},
+        {id:'ticket.create',topic:'ticket',objects:['ticket','issue'],actions:['create','find'],articles:{frontdesk:'fd-tickets',restaurant:'rs-tickets',admin:'ad-tickets'},guides:{frontdesk:'op-fd-ticket',restaurant:'op-rs-ticket',admin:'ad-support'},priority:5},
+        {id:'ticket.resolve',topic:'ticket',objects:['ticket','issue'],actions:['edit','resolve','manage'],articles:{admin:'ad-tickets'},guide:'ad-support',priority:7},
+        {id:'notification.view',topic:'notification',objects:['notification'],actions:['find','manage'],articles:{frontdesk:'fd-notifications',restaurant:'rs-notifications',admin:'ad-notifications'},priority:7}
+    ];
+    // Phase 7.4.3: manually source-audited, default-deny capability registry.
+    // Entries are pinned to implemented UI action anchors and existing Help article IDs.
+    // This is a client-side Help authorization policy, NOT a server security boundary.
+    const smart743Registry=Object.freeze([{"id":"employee.create","object":"employee","action":"create","roles":["admin"],"articles":{"admin":"ad-users"},"codeAnchor":"feature-edit-employee","review":"source-audited","kind":"instructional"},{"id":"employee.deactivate","object":"employee","action":"deactivate","roles":["admin"],"articles":{"admin":"ad-remove"},"codeAnchor":"feature-edit-employee","review":"source-audited","kind":"instructional"},{"id":"employee.activate","object":"employee","action":"activate","roles":["admin"],"articles":{"admin":"ad-users"},"codeAnchor":"feature-edit-employee","review":"source-audited","kind":"instructional"},{"id":"employee.permissions","object":"employee","action":"permissions","roles":["admin"],"articles":{"admin":"ad-users"},"codeAnchor":"feature-edit-employee","review":"source-audited","kind":"instructional"},{"id":"employee.find","object":"employee","action":"find","roles":["admin"],"articles":{"admin":"ad-users"},"codeAnchor":"nav-users","review":"source-audited","kind":"instructional"},{"id":"receipt.builder","object":"receipt","action":"design","roles":["admin"],"articles":{"admin":"ad-builder-new"},"codeAnchor":"receiptBuilderPage","review":"source-audited","kind":"instructional"},{"id":"receipt.settings","object":"receipt","action":"configure","roles":["admin"],"articles":{"admin":"ad-receipt-settings-new"},"codeAnchor":"receiptSettingsPage","review":"source-audited","kind":"instructional"},{"id":"receipt.reprint","object":"receipt","action":"reprint","roles":["frontdesk","restaurant","admin"],"articles":{"frontdesk":"fd-receipts-new","restaurant":"rs-receipts-new","admin":"ad-receipts-new"},"codeAnchor":"receipt-payment","review":"source-audited","kind":"instructional"},{"id":"receipt.error","object":"receipt","action":"troubleshoot","roles":["frontdesk","restaurant","admin"],"articles":{"frontdesk":"fd-receipt-troubleshoot-v5","restaurant":"rs-receipt-troubleshoot-v5","admin":"ad-receipts-new"},"codeAnchor":"receiptPrompt","review":"source-audited","kind":"troubleshooting"},{"id":"payment.method","object":"payment_method","action":"configure","roles":["admin"],"articles":{"admin":"ad-methods-new"},"codeAnchor":"feature-edit-payment","review":"source-audited","kind":"instructional"},{"id":"payment.error","object":"payment","action":"troubleshoot","roles":["frontdesk","restaurant"],"articles":{"frontdesk":"fd-payment-error-new","restaurant":"rs-payment-error-new"},"codeAnchor":"payment-form","review":"source-audited","kind":"troubleshooting"},{"id":"payment.record","object":"payment","action":"record","roles":["frontdesk","restaurant"],"articles":{"frontdesk":"fd-payment","restaurant":"rs-cash"},"codeAnchor":"payment-form","review":"source-audited","kind":"instructional"},{"id":"discount.apply","object":"discount","action":"apply","roles":["frontdesk","restaurant"],"articles":{"frontdesk":"fd-late-discount-new","restaurant":"rs-discount-new"},"codeAnchor":"discount-order","review":"source-audited","kind":"instructional"},{"id":"discount.error","object":"discount","action":"troubleshoot","roles":["frontdesk","restaurant","admin"],"articles":{"frontdesk":"fd-late-discount-troubleshoot-v5","restaurant":"rs-discount-troubleshoot-v5","admin":"ad-discount-troubleshoot-v5"},"codeAnchor":"discount-apply-form","review":"source-audited","kind":"troubleshooting"},{"id":"promotion.manage","object":"promotion","action":"manage","roles":["admin"],"articles":{"admin":"ad-discount-new"},"codeAnchor":"promotion-form","review":"source-audited","kind":"instructional"},{"id":"stay.create","object":"stay","action":"register","roles":["frontdesk"],"articles":{"frontdesk":"fd-register"},"codeAnchor":"register-stay","review":"source-audited","kind":"instructional"},{"id":"stay.checkout","object":"stay","action":"checkout","roles":["frontdesk"],"articles":{"frontdesk":"fd-checkout"},"codeAnchor":"checkout-stay","review":"source-audited","kind":"instructional"},{"id":"stay.checkout-error","object":"stay","action":"troubleshoot_checkout","roles":["frontdesk"],"articles":{"frontdesk":"fd-checkout-troubleshoot-v5"},"codeAnchor":"confirm-checkout","review":"source-audited","kind":"troubleshooting"},{"id":"room.status","object":"room","action":"view_status","roles":["frontdesk","admin"],"articles":{"frontdesk":"fd-room-status","admin":"ad-rooms"},"codeAnchor":"fd-room-filter","review":"source-audited","kind":"instructional"},{"id":"room.create","object":"room","action":"manage","roles":["admin"],"articles":{"admin":"ad-rooms"},"codeAnchor":"add-room","review":"source-audited","kind":"instructional"},{"id":"charge.post","object":"charge","action":"post","roles":["frontdesk"],"articles":{"frontdesk":"fd-service"},"codeAnchor":"case 'service-form'","review":"source-audited","kind":"instructional"},{"id":"order.create","object":"order","action":"create","roles":["restaurant"],"articles":{"restaurant":"rs-start"},"codeAnchor":"new-for-table","review":"source-audited","kind":"instructional"},{"id":"order.additems","object":"order","action":"add_items","roles":["restaurant"],"articles":{"restaurant":"rs-add"},"codeAnchor":"table-add-items","review":"source-audited","kind":"instructional"},{"id":"order.void","object":"order","action":"void","roles":["restaurant"],"articles":{"restaurant":"rs-void"},"codeAnchor":"void-order","review":"source-audited","kind":"instructional"},{"id":"order.roompost","object":"order","action":"post_room","roles":["restaurant"],"articles":{"restaurant":"rs-post"},"codeAnchor":"post-table-form","review":"source-audited","kind":"instructional"},{"id":"table.manage","object":"table","action":"manage","roles":["admin"],"articles":{"admin":"ad-tables"},"codeAnchor":"edit-table","review":"source-audited","kind":"instructional"},{"id":"table.status","object":"table","action":"view_status","roles":["restaurant"],"articles":{"restaurant":"rs-table-status"},"codeAnchor":"rs-table-filter","review":"source-audited","kind":"instructional"},{"id":"menu.manage","object":"menu","action":"manage","roles":["admin"],"articles":{"admin":"ad-menu"},"codeAnchor":"catalog-form","review":"source-audited","kind":"instructional"},{"id":"service.manage","object":"service_catalog","action":"manage","roles":["admin"],"articles":{"admin":"ad-service"},"codeAnchor":"edit-catalog-service","review":"source-audited","kind":"instructional"},{"id":"audit.search","object":"audit","action":"search","roles":["admin"],"articles":{"admin":"ad-audit"},"codeAnchor":"view-audit","review":"source-audited","kind":"instructional"},{"id":"ticket.create","object":"ticket","action":"create","roles":["frontdesk","restaurant","admin"],"articles":{"frontdesk":"fd-tickets","restaurant":"rs-tickets","admin":"ad-tickets"},"codeAnchor":"ticket-create","review":"source-audited","kind":"instructional"},{"id":"ticket.resolve","object":"ticket","action":"resolve","roles":["admin"],"articles":{"admin":"ad-tickets"},"codeAnchor":"ticket-manage-form","review":"source-audited","kind":"instructional"},{"id":"notification.view","object":"notification","action":"view","roles":["frontdesk","restaurant","admin"],"articles":{"frontdesk":"fd-notifications","restaurant":"rs-notifications","admin":"ad-notifications"},"codeAnchor":"notify-toggle","review":"source-audited","kind":"instructional"}].map(entry=>Object.freeze({...entry,roles:Object.freeze(entry.roles),articles:Object.freeze(entry.articles)})));
+    const smart743ById=new Map(smart743Registry.map(entry=>[entry.id,entry]));
+    // PHASE 7.4.4 SAFETY POLICY BEGIN
+    // Every operational answer requires a source-audited capability, a matching
+    // object AND action in the user's words, a role-specific article and a
+    // successful registry audit. MiniLM may rank hints, but it cannot create
+    // evidence or authorize a procedure. This is NOT server-side security.
+    const smart744PolicyVersion='7.4.4-safety-enforcement-v1';
+    let smart744LastVerified=null;
+    let smart744Transcript=[];
+    function smart744Policy(question, context=null){
+        const q=String(question||'').toLowerCase().replace(/[’‘]/g,"'").replace(/\s+/g,' ').trim();
+        const has=re=>re.test(q);
+        const result=(id,reason,source='safety-policy')=>({id,reason,source});
+        if(!q)return result('__clarify__','Please describe the resortOS task or screen');
+        if(q.length>240)return result('__clarify__','Please ask about one task at a time');
+        const boundary=smart74Boundary(q,'');
+        // Legacy boundary rules can veto explicit unsupported subjects, but their
+        // broad no-evidence/ambiguous guesses must not suppress a well-formed
+        // current question before its object/action pairs are parsed.
+        if(boundary && /outside the verified resortOS capability catalog|Feature or subject is outside/i.test(boundary.reason))return result('__unsupported__',boundary.reason);
+        const scope=smart73Scope(q,'');
+        if(scope && (scope.status==='unknown' && /Unsupported resortOS feature|No verified resortOS function/i.test(scope.reason)))return result('__unsupported__',scope.reason);
+        if(scope?.reason==='Multiple independent workflows; ask which to address first')return result('__clarify__',scope.reason);
+        if(has(/\b(?:deactivate|create|enable|configure|record|void|remove|change|manage|edit)\b.{0,50}\b(?:employee|staff|account|room|table|order)\b.{0,24}\b(?:and|then)\b.{0,40}\b(?:configure|edit|create|update|deactivate|enable|change)\b.{0,30}\b(?:receipts?|payment|menu|staff|employee|account|table|room|tickets?)\b/))return result('__clarify__','Please ask about one operation at a time');
+        // Unverified integrations and sensitive operations must never be
+        // transformed into the superficially similar *local* feature.
+        if(has(/\b(?:api|webhook|quickbooks|xero|stripe|paypal|woocommerce|shopify|zapier|external integration|third.party|import.*(?:spreadsheet|csv)|export.*(?:accounting|bank)|synchroni[sz]e.*external|automatically (?:buy|charge|bill|refund|send|email|text|pay|purchase)|refund|reverse a payment|delete.*permanently|erase.*(?:history|records)|override.*permissions?|bypass.*(?:role|authorization|access)|impersonat\w*|view.*(?:password|pin|secret))\b/))return result('__unsupported__','That integration, irreversible operation, or access bypass is not registered');
+        if(has(/\b(?:attendance|biometric|facial recognition|gps tracking|gps location|live location|track.*location|video surveillance|cctv|keycard|hotel reservations? online|booking website|tax filing|national income tax|income taxes|income tax|tax returns?|taxes|tax payments?|property taxes?|passport renewal|visa|immigration office|inventory purchasing|supermarket ordering|delivery application|currency converter|currency exchange|government (?:form|permit)|business permit|health records?|health database|allergies|medical database|housekeeping scheduling|housekeeping tasks?|housekeeping robot|robotic housekeeping|cleaner scheduling|room (?:rates?|pricing)|accommodation.rate|accommodation rate|accommodation deposits?|nightly|retail (?:sale|shop)|walk.in retail|sell (?:stocks|groceries|lottery|retail)|lottery|et?sy|facebook|instagram|social media|top up|top.up|wallet balance|live feeds?|security cameras?|security camera|smart (?:lights?|lighting|locks?)|electronic door|elevator|physical fire alarm|fire alarm|weather radar|weather forecast|parking cameras?|share.market|market trading|financial trading|plane tickets?|airport taxi|automatically reserve|welcome message|text.*guest|online credit.card|credit.card charge|payment wallet|directly accept.*gcash|withdraw real money|transfer cash|bank account|utility bill payment|electronic lock|hardware control|remotely.*(?:program|unlock|lock)|refund|financial transactions? permanently)\b/))return result('__unsupported__','Not part of the verified SmartHelp capabilities');
+        if(has(/\b(?:delete|erase|wipe|purge|permanently remove)\b/) && has(/\b(?:the previous one|that one|it|this one|the other one)\b/) && !has(/\b(?:employee|staff|room|order|audit|receipt|menu|ticket|table|payment|charge)\b/))return result('__clarify__','Which record are you referring to?');
+        if(has(/\b(?:delete|erase|wipe|purge|permanently remove)\b/) && !has(/\b(?:without|rather than|instead of|not|never)\b.{0,35}\b(?:delete|erase|wipe|purge|remove)\b/))return result('__unsupported__','Permanent deletion is not a verified workflow');
+        // Only a very narrow, read-only repeat of an already authorized
+        // instruction can reuse prior context. Never infer the object of an
+        // action from 'it', 'that', 'the other one', etc.
+        if(has(/^(?:can you )?(?:repeat|show|explain|summari[sz]e) (?:those|the|your|that|same) (?:steps|instructions|procedure)(?: again)?\??$|^(?:what were (?:those|the) steps\??)$/)){
+            if(context?.id && context.employeeId===String(employee()?.id||'') && context.role===role && smart743ById.has(context.id)){
+                return result(context.id,'Explicit repeat of the previously verified, same-role answer','verified-context-repeat');
+            }
+            return result('__clarify__','No authorized prior procedure to repeat');
+        }
+        if(/^(?:which record should i select|do i click the left or right button)\??$/.test(q))return result('__clarify__','Please identify the specific record or screen control');
+        // Ambiguous standalone follow-ups remain ambiguous even if the previous
+        // question happened to mention an object: do not invent a new action.
+        if(has(/^(?:i clicked the wrong thing.*|can i undo what we just did|which setting should i use|can you open the previous screen|what exactly is wrong here|should i press confirm now|can we change the amount|why is the count different|i clicked the wrong thing|how do i complete the remaining part|can you restore the previous value|which department should i go to instead|does that change the price|which record are you talking about|can we finish the process from here|where is the correct confirmation button|how do i clear the last entry|can we change the amount there|where do i view its previous version|can another coworker do the same action)\??$|^(?:what about (?:that|the other|this)|do it again|how do i (?:do|fix|change|stop|reverse|enable|remove|add) (?:it|that|this|the other one)|can i (?:undo|reverse|delete|change) (?:it|that)|the (?:other|same) one|why did it fail|where is it|and (?:now|then)\??)[?.!]*$/))return result('__clarify__','Which specific resortOS record and operation do you mean?');
+        const employeeObj=has(/\b(?:employees?|staff|workers?|cashier|receptionist|operator|teammate|coworker|server|waiter|clerk|team member|users?|login|credentials?|accounts?|personnel|workforce|hire|hired|someone|usual role|department privileges)\b/);
+        const receiptObj=has(/\b(?:receipt|receipts|acknowledg\w*|printed slips?|customer slips?|first print|printout|print preview|proof of payment|proof of settlement|print was lost|duplicate using.*transaction|receipt template|receipt layout|reprint|printed transaction)\b/);
+        const paymentObj=has(/\b(?:payment|paid|pay|tender|cash|amount received|settlement|balance|outstanding|transaction|gcash)\b/);
+        const discountObj=has(/\b(?:discount|concession|senior citizen|pwd|vat exemption|reduction)\b/);
+        const stayObj=has(/\b(?:guest|stay|arrival|check.?in|check.?out|departure|departing|occupant|reception|front desk)\b/);
+        const roomObj=has(/\b(?:room|rooms|occupancy|vacant|occupied|accommodation)\b/);
+        const foodObj=has(/\b(?:restaurant|food|meal|dish|diner|dining|table|order|cart|bill|dessert|drinks?|server)\b/);
+        const issue=has(/\b(?:refus\w*|not reducing|remains occupied|reports an issue|error|failed?|failing|reject\w*|invalid|unavailable|unable|can.t|cannot|won.t|doesn.t|not work\w*|not showing|missing|blank|stuck|broken|problem|wrong|unpaid|unsettled|disabled|grayed|greyed|did not|nothing happens|does nothing|uncertain|freeze|froze)\b/);
+        const found=[];
+        const add=(id,actionEvidence)=>{if(smart743ById.has(id)&&!found.some(x=>x.id===id))found.push({id,actionEvidence});};
+        if(employeeObj){
+            if(has(/\b(?:reactivat\w*|re.?enable|enable.*(?:previously|disabled|inactive)|restore\w*|reinstate\w*|resume\w*|returning|returned|back from leave|back at work|sign in again|access again|activate again)\b/) && has(/\b(?:inactive|disabled|suspended|former|previous|back|returning|returned|reinstat\w*|reactivat\w*|again|leave|restore\w*)\b/))add('employee.activate','reactivate');
+            else if(has(/\b(?:deactivat\w*|disable\w*|suspend\w*|revoke\w*|prevent.*access|resigned|terminated|former|ex.employee|left the company|no longer (?:log|sign)|block.*(?:login|account|access)|switch.*access.*off)\b/))add('employee.deactivate','deactivate');
+            else if(has(/\b(?:permissions?|privileges?|access to|access for|reception access|grant.*access|authorized?|which workspaces?|both (?:departments|workspaces|front desk)|assign.*department|change.*role|change.*access|cover reception)\b/) && !has(/\b(?:new hire|new employee|new worker|new staff|first sign.in|onboard|create.*account)\b/))add('employee.permissions','permissions');
+            else if(has(/\b(?:list|directory|roster|find|search|see|browse|view|look up|locate|existing|registered|which section|which screen|current list|confirm.*active)\b/) && has(/\b(?:staff|employees?|workers?|users?|software accounts?|accounts?|profiles?|directory|roster)\b/) && !has(/\b(?:new|create|add|onboard|audit|system log)\b/))add('employee.find','find');
+            else if(has(/\b(?:new hire|new employee|new staff|new worker|new team member|new receptionist|new cashier|new kitchen|new desk clerk|hired|starting (?:work|on monday)|first.*(?:login|sign.in)|create.{0,22}(?:account|user|login|credentials?|staff|employee)|add\s+(?:an? |new |another )?(?:employee|worker|staff|cashier|account)|onboard|provision|register.*(?:employee|staff|worker)|enroll.*(?:staff|worker)|needs? (?:an? )?(?:account|first.*sign.in|login|access to the application))\b/))add('employee.create','create');
+        }
+        if(receiptObj){
+            if((issue || has(/\b(?:white|empty|unresponsive|no response|does not|not open|not printing|before retrying|nothing occurs)\b/)) && has(/\b(?:print|printer|reprint|receipt|preview|popup|window|acknowledg)\b/) && !has(/\b(?:old|lost|previous)\b.*\b(?:receipt|printed|print)\b.*\b(?:reprint|again)\b/))add('receipt.error','troubleshoot');
+            else if(has(/\b(?:design|layout|builder|template|rearrang\w*|position|align|move.*(?:block|total|footer|field)|customiz\w*|visually|print elements?|80 ?mm)\b/))add('receipt.builder','design');
+            else if(has(/\b(?:resort (?:name|address|phone|telephone)|property (?:name|address|phone)|outdated resort address|contact (?:number|details)|branding|logo|header details|receipt settings|default paper|business (?:name|information|phone|address))\b/) && has(/\b(?:change|changes|changed|update|updated|edit|configure|set|show|print|manage|where)\b/))add('receipt.settings','settings');
+            else if(has(/\b(?:reprint|again|once more|another copy|duplicate|second copy|retrieve|retrieved|history|lost|previous|earlier|yesterday|past|already issued|old receipt|printed record)\b/))add('receipt.reprint','reprint');
+        }
+        if(has(/\b(?:payment methods?|payment options?|tender options?|tender classification|tender|bank transfer|cashless|gcash method|e.wallet|method of payment|selectable payment|cash classification|non.cash)\b/) && has(/\b(?:add|new|create|configure|enable|set|update|manage|edit|activate|choice|selectable|dropdown|adjust|where|classify|classification|switch|change)\b/))add('payment.method','payment-method-config');
+        else if(paymentObj && issue && has(/\b(?:payment|paid|pay|amount|tender|transaction|balance|settlement|checkout)\b/) && (!/\bunpaid\b/.test(q)||/\b(?:still|shows|even though|not recorded|error|reject|invalid|failed)\b/.test(q)))add('payment.error','payment-troubleshoot');
+        else if(paymentObj && has(/\b(?:record|document.*collection|handed over cash|cash handed over|collect|settle|register|mark.*paid|cash received|payment received|entered|received|part.*(?:payment|balance)|partial payment|paid cash|complete.*payment|how.*pay)\b/) && !has(/\b(?:refund|automatic|online|credit card charge|bank transfer money)\b/))add('payment.record','payment-record');
+        if(discountObj){
+            if(issue)add('discount.error','discount-troubleshoot');
+            else if(has(/\b(?:apply|enter|use|give|grant|qualif\w*|eligible|select|before.*payment|reduction)\b/) && !has(/\b(?:promotion|promotional|seasonal)\b/))add('discount.apply','discount-apply');
+        }
+        if(has(/\b(?:promotion|promo|promotional|seasonal offer|seasonal deal|seasonal dining offer|campaign)\b/) && has(/\b(?:manage|new|create|edit|adjust|dates?|update|deactivate|disable|pause|expired|activate|expiry|expiration|configure|set|change)\b/))add('promotion.manage','promotion-manage');
+        if(stayObj || roomObj){
+            if(has(/\b(?:check.?out|checkout action|departure|departing|leaving|guest leaves|release.*room|finish.*stay|end.*stay|finaliz\w*.*stay|close.*stay)\b/) && has(/\b(?:unpaid|unsettled|blocked|can.t|cannot|won.t|failed?|error|not.*vacant|remains occupied|occupied.*when|reports an issue|stuck|disabled|unable|reject\w*)\b/))add('stay.checkout-error','checkout-troubleshoot');
+            else if(has(/\b(?:check.?out|departure|departing|guest leaves|guest.*leaving|finish.*stay|end.*stay|release.*room|finaliz\w*.*stay|close.*stay)\b/) && (stayObj||roomObj))add('stay.checkout','checkout');
+            else if(has(/\b(?:register.*(?:guest|stay|family)|check.?in|checks in|new guest|new stay|arriv\w*|assign.*(?:vacant|room)|link.*vacant room|record.*arrival|start.*stay|create.*guest occupancy|enter.*active stay|occupant.*new)\b/) && !has(/\b(?:without registering|without.*new guest|check.*vacancy.*without)\b/))add('stay.create','register-stay');
+            else if(roomObj && has(/\b(?:vacant|vacancy|empty|occupied|room status|room overview|overview|occupancy|available rooms?|available units|room dashboard|rooms grid|availability|which rooms?|see.*rooms?|view.*rooms?|find.*rooms?)\b/) && !has(/\b(?:post|charge|add|register|create|deactivate|disable|manage|configure|inventory|catalog|check.?in)\b/))add('room.status','view-room-status');
+            if(roomObj && has(/\b(?:add|create|configure|edit|manage|deactivate|disable|activate|new|renumber|record created|mark inactive|mark.*inactive)\b/) && has(/\b(?:room catalog|room inventory|room record|room manager|managed inventory|rooms? (?:number|numbering|listing)|accommodation unit|new room|add.*room|create.*room|manage.*room|deactivate.*room|disable.*room)\b/))add('room.create','manage-room');
+        }
+        if(has(/\b(?:additional (?:resort )?service|extra service|incidental service|service catalog|service pricing|service rate|service option|service type)\b/) && has(/\b(?:configure|manage|price|rate|define|create|edit|adjust|add.*(?:option|type|service)|change|set)\b/) && !has(/\b(?:guest|active stay|post.*room|charge.*room)\b/))add('service.manage','service-catalog');
+        if(has(/\b(?:charge|fee|extra towels?|incidental|additional service|rental|equipment use|equipment|borrowed)\b/) && has(/\b(?:post|record|add|log|charge|borrowed|bill)\b/) && has(/\b(?:guest|stay|room|account|borrowed|active stay)\b/) && !has(/\b(?:food|restaurant|dining|order|meal|charge history|past charges|old charge)\b/))add('charge.post','post-guest-charge');
+        if(foodObj){
+            if(has(/\b(?:void|cancel|reverse|invalidate|invalidat\w*|wrong order|wrong dining ticket|duplicate order|erroneous order|incorrect order)\b/) && has(/\b(?:order|restaurant|food ticket|dining ticket)\b/))add('order.void','void-order');
+            else if(has(/\b(?:existing order|current order|open order|already ordered|another (?:dish|item|dessert|plate|drink)|extra (?:dish|dessert|item|drinks?)|more (?:items|food|dishes|drinks)|increase.*quantity|add.*(?:existing|current|same|open).*order|append.*(?:order|item)|additional.*(?:item|food)|add it to.*order)\b/))add('order.additems','add-order-items');
+            else if(has(/\b(?:post|put|add|charge|bill|transfer|attach|send|carried over|carry over)\b/) && has(/\b(?:room|stay|guest account|room account)\b/) && has(/\b(?:restaurant|food|meal|dinner|order|table|bill)\b/))add('order.roompost','post-food-to-room');
+            else if(has(/\b(?:new order|start.*order|create.*order|open.*order|take.*order|place.*order|first.*order|fresh food bill|new food bill|fresh.*bill|order for.*table|begin.*(?:order|ticket|bill)|new.*food ticket)\b/))add('order.create','create-order');
+        }
+        if(has(/\b(?:tables?|dining tables?|restaurant tables?|table(?:s)? (?:in use|available|awaiting payment)|table status|table layout|table record|table manager|table \d+)\b/)){
+            if(has(/\b(?:add|create|edit|rename|manage|configure|activate|deactivate|inactive|mark|set|new|set up)\b/) && (!has(/\b(?:order|bill|checkout|payment)\b/) || has(/\b(?:without erasing|without deleting|preserving history)\b/)))add('table.manage','manage-table');
+            else if(has(/\b(?:status|available|occupied|in use|waiting|awaiting|filter|which|view|see|shows|open)\b/) && (!has(/\b(?:new order|create.*order|open.*order|start.*order|take.*order)\b/) || has(/\b(?:before taking|before opening|before creating)\b.*\b(?:new )?order\b/)))add('table.status','view-table-status');
+        }
+        if(has(/\b(?:menu|menu items?|food items?|dish(?:es)?|food catalog|food categories|menu category|dish price|dish description)\b/) && has(/\b(?:edit|edits|hide|mark.*inactive|inactive|unavailable|change|update|add|create|manage|adjust|deactivate|activate|pricing|photo|image|description|category|availability|price)\b/) && !has(/\b(?:existing order|current order|guest order|cart|add.*food.*order)\b/))add('menu.manage','manage-menu');
+        if(has(/\b(?:audit|system log|activity log|action history|where.*logged|who.*(?:voided|changed|posted|settled|recorded)|historical changes|trace.*changes)\b/) && has(/\b(?:search|find|filter|inspect|review|see|view|trace|who|history|log|logged)\b/))add('audit.search','search-audit');
+        if(has(/\b(?:support ticket|help ticket|issue ticket|support request|support case|support issue|assigned issue|broken chair|chair broke|broken equipment|maintenance request|malfunctioning appliance|report.*issue|support & issues?)\b/)){
+            if(has(/\b(?:resolve|resolved|fixed|repaired|completed|close out|close.*(?:ticket|case|issue)|mark.*(?:resolved|closed)|finish.*ticket|change.*status)\b/))add('ticket.resolve','resolve-ticket');
+            else if(has(/\b(?:create|open|submit|report|new|raise|file|ask|request|need.*maintenance)\b/))add('ticket.create','create-ticket');
+        }
+        if(has(/\b(?:notification|notifications|unread alert|alerts?|bell icon|bell|notification bell)\b/) && has(/\b(?:view|read|see|check|find|latest|unread|open|where|show|showing)\b/))add('notification.view','view-notifications');
+        if(found.length===0){
+            const familiar=has(/\b(?:resortos|admin|front desk|restaurant|employee|staff|receipt|payment|discount|order|room|stay|ticket|table|menu|charge|audit|notification|service|promotion|account|checkout|guest|printer|cashier)\b/);
+            return result(familiar||boundary?.status==='clarify'||scope?.status==='clarify'?'__clarify__':'__unsupported__',familiar?'A verified object and operation could not both be established':'No verified capability for this request');
+        }
+        if(found.some(x=>x.id==='payment.record') && has(/\b(?:as paid|settled|record.*paid|part.*balance|collection|cash received|handed over cash)\b/)){
+            for(let i=found.length-1;i>=0;i--)if(found[i].id==='charge.post')found.splice(i,1);
+        }
+        if(found.some(x=>x.id==='table.status') && has(/\b(?:before taking|before creating|before opening)\b.*\b(?:order|bill)\b/)){
+            for(let i=found.length-1;i>=0;i--)if(found[i].id==='order.create')found.splice(i,1);
+        }
+        if(found.some(x=>x.id==='room.create') && has(/\b(?:room record|room inventory|room catalog|managed inventory|unavailable room)\b/)){
+            for(let i=found.length-1;i>=0;i--)if(found[i].id==='stay.checkout')found.splice(i,1);
+        }
+        // If an action is explicitly a named subtype, suppress less specific
+        // candidates whose broad words ('payment', 'room', 'table') overlap it.
+        const specific=['receipt.error','receipt.builder','receipt.settings','payment.method','payment.error','discount.error','stay.checkout-error','order.roompost','order.additems','order.void','ticket.resolve','order.create','charge.post','room.create','stay.create','ticket.create','audit.search'];
+        const top=found.find(x=>specific.includes(x.id));
+        if(top){
+            const incompatible=found.filter(x=>x.id!==top.id && ![
+                'receipt.error:payment.record','receipt.error:receipt.reprint','receipt.error:payment.error',
+                'payment.method:payment.record','payment.method:employee.create','payment.error:payment.record',
+                'discount.error:discount.apply','stay.checkout-error:stay.checkout',
+                'order.roompost:charge.post','order.roompost:room.status','order.roompost:stay.checkout',
+                'order.additems:menu.manage','order.additems:order.create',
+                'order.void:ticket.create','order.void:audit.search','ticket.resolve:ticket.create',
+                'order.create:table.status','charge.post:room.status','charge.post:payment.record',
+                'room.create:room.status','stay.create:room.status','stay.create:room.create','ticket.create:table.status','audit.search:employee.find'
+            ].includes(top.id+':'+x.id));
+            if(incompatible.length===0){found.splice(0,found.length,top);}
+        }
+        if(found.length===0 && (boundary?.status==='clarify'||scope?.status==='clarify'))return result('__clarify__','Please identify the task or record');
+        // Never pick the first plausible workflow if evidence points to more than one.
+        if(found.length!==1)return result('__clarify__','Multiple different supported tasks fit this question; specify one operation');
+        const selected=found[0];
+        const contradiction=smart743ObjectGate(q,selected.id);
+        if(contradiction)return result('__unsupported__',contradiction.reason);
+        const audit=smart743RegistryAudit();
+        if(!audit.valid)return result('__unsupported__','Verified capability registry consistency failed');
+        const certified=smart743ArticleFor(selected.id);
+        if(!certified)return result('__unsupported__','No approved help article exists for this operation');
+        return {...result(selected.id,'Verified object + '+selected.actionEvidence+' action and approved '+certified.article.id,'verified-object-action'),evidence:{object:certified.capability.object,action:selected.actionEvidence,articleId:certified.article.id,workspace:certified.workspace,registryVersion:'7.4.3'},restricted:certified.restricted};
+    }
+    function smart744AnswerFor(decision){
+        if(!decision?.id||decision.id.startsWith('__'))return null;
+        const certified=smart743ArticleFor(decision.id);
+        if(!smart743RegistryAudit().valid||!certified||decision.evidence?.articleId && decision.evidence.articleId!==certified.article.id)return null;
+        const intent=smartIntentDefinitions.find(x=>x.id===decision.id);
+        return intent?{article:certified.article,intent,source:decision.source,verifiedCapability:decision.id,evidence:decision.evidence,restricted:certified.restricted,workspaceSwitch:!certified.restricted&&role!==certified.article.role}:null;
+    }
+    // PHASE 7.4.4 SAFETY POLICY END
+
+    function smart743ArticleFor(id,requestedRole=role){
+        const capability=smart743ById.get(id);
+        if(!capability || capability.review!=='source-audited')return null;
+        const explicit=capability.roles.includes(requestedRole)?requestedRole:null;
+        const permitted=explicit||(capability.roles.find(workspace=>hasAccess(workspace))||null);
+        const workspace=permitted||capability.roles[0];
+        const articleId=capability.articles[workspace];
+        const article=HELP_ARTICLES.find(a=>a.id===articleId && a.role===workspace && Array.isArray(a.steps) && a.steps.length>0);
+        return article?{article,capability,workspace,restricted:!hasAccess(workspace)}:null;
+    }
+    function smart743RegistryAudit(){
+        const failures=[];const intents=new Set(smartIntentDefinitions.map(intent=>intent.id));
+        const duplicateIds=new Set();const seen=new Set();
+        for(const cap of smart743Registry){
+            if(seen.has(cap.id))duplicateIds.add(cap.id);
+            seen.add(cap.id);
+            if(!intents.has(cap.id))failures.push(`${cap.id}: no intent definition`);
+            for(const workspace of cap.roles){
+                const article=HELP_ARTICLES.find(a=>a.id===cap.articles[workspace]&&a.role===workspace);
+                if(!article || !Array.isArray(article.steps) || !article.steps.length)failures.push(`${cap.id}: missing validated ${workspace} article`);
+            }
+        }
+        for(const id of intents)if(!smart743ById.has(id))failures.push(`${id}: not reviewed / default deny`);
+        for(const id of duplicateIds)failures.push(`${id}: duplicate capability`);
+        return {version:'7.4.4',registered:smart743Registry.length,reviewed:smart743Registry.filter(x=>x.review==='source-audited').length,failures,valid:failures.length===0};
+    }
+    // Explicit object mentions can veto a misleading task-family match.
+    // A generic verb ("deactivate", "post") is not sufficient to select its object.
+    function smart743ObjectGate(question,id){
+        const cap=smart743ById.get(id);
+        if(!cap)return {id:'__unsupported__',reason:'No reviewed registry entry exists for this task',source:'registry'};
+        const q=String(question||'').toLowerCase().replace(/[’]/g,"'");
+        const targets=[
+            ['employee',/\b(?:employee|staff member|staff account|worker|receptionist|user account|user login|personnel|employee credentials?)\b/],
+            ['table',/\b(?:dining table|restaurant table|table \d+|tables?|table record)\b/],
+            ['room',/\b(?:rooms?|room \d+|room record|occupancy|vacant)\b/],
+            ['receipt',/\b(?:receipts?|reprints?|acknowledg(?:ement|ment)s?|receipt layout|receipt preview)\b/],
+            ['discount',/\b(?:discounts?|vat exemption|pwd concession|senior citizen concession)\b/],
+            ['menu',/\b(?:menu item|food menu|menu categor(?:y|ies)|dish|dishes)\b/],
+            ['service_catalog',/\b(?:additional service(?:s)? catalog|extra service catalog|service catalog|service rate|service pricing)\b/],
+            ['ticket',/\b(?:support ticket|issue ticket|support issue|support request)\b/]
+        ].filter(([,re])=>re.test(q)).map(([target])=>target);
+        // Only veto a UNIQUE and explicit target that conflicts with the proposed task.
+        if(targets.length===1 && targets[0]!==cap.object){
+            const allowed={
+                order:['table','room','menu'], stay:['room'], payment:['receipt','room'],
+                charge:['room','service_catalog'], receipt:['payment'],
+                service_catalog:['room'], employee:[], room:['stay'],
+                ticket:['table','room','receipt','employee','menu','service_catalog'], table:[], menu:[], discount:[], audit:['room','receipt','employee','table','payment']
+            };
+            if(!(allowed[cap.object]||[]).includes(targets[0]))return {id:'__unsupported__',reason:'The selected task applies to a different object than the one requested',source:'registry-object-check'};
+        }
+        // Reject destructive catalog deletion: these records have active/inactive lifecycle.
+        if(/\b(?:delete|erase|purge|permanently remove|wipe)\b/.test(q) && /\b(?:employee|staff|room|table|menu|service|payment method|audit|history|receipt)\b/.test(q) && !/\b(?:without|instead of|rather than|do not|don't|not) (?:\w+ ){0,4}(?:delete|erasing|deleting|removing)\b/.test(q)){
+            return {id:'__unsupported__',reason:'Permanent deletion is not a verified resortOS operation',source:'registry-action-check'};
+        }
+        return null;
+    }
+    function smart743ValidateDecision(question,decision){
+        if(!decision || decision.id?.startsWith('__'))return decision;
+        const boundary=smart74Boundary(question,'');
+        if(boundary)return {id:boundary.status==='clarify'?'__clarify__':'__unsupported__',reason:boundary.reason,source:'registry-boundary'};
+        if(/\b(?:unlock|lock|open|control|operate|switch|turn on|turn off)\b.{0,60}\b(?:door|physical lock|smart light|lights|camera|cctv|thermostat|iot device)\b/i.test(question))return {id:'__unsupported__',reason:'Physical device control is not a verified resortOS capability',source:'registry-physical-boundary'};
+        const audited=smart743RegistryAudit();
+        if(!audited.valid)return {id:'__unsupported__',reason:'Capability registry validation failed; unsafe to recommend a guide',source:'registry'};
+        const article=smart743ArticleFor(decision.id);
+        if(!article)return {id:'__unsupported__',reason:'Task has no verified help article for the mapped capability',source:'registry'};
+        return smart743ObjectGate(question,decision.id)||{...decision,verifiedCapability:article.capability.id};
+    }
+    function smart743RegistryMarkup(){
+        const audit=smart743RegistryAudit();
+        const rows=smart743Registry.map(cap=>`<tr><td><code>${esc(cap.id)}</code></td><td>${esc(cap.object)} / ${esc(cap.action)}</td><td>${esc(cap.roles.join(', '))}</td><td><code>${esc(cap.codeAnchor)}</code></td></tr>`).join('');
+        return `<section class="smart72-section"><div class="smart2-screen-title"><span class="smart2-eyebrow">PHASE 7.4.3 · CAPABILITY REGISTRY</span><h2>Verified help capabilities</h2><p>Reviewed action anchors and help-article mappings; this is NOT server-side authorization or proof of production readiness.</p></div><div class="smart71-notice">${audit.valid?'Registry consistency PASS':'Registry consistency FAILED'} · ${audit.registered} entries · ${audit.failures.length} failures. Unlisted tasks default to no operational guide. This registry checks workflow identity and documentation, not backend security.</div>${audit.failures.length?`<div class="smart71-error">${esc(audit.failures.join(' · '))}</div>`:''}<div style="overflow:auto;max-height:330px"><table class="table"><thead><tr><th>Intent</th><th>Object / Action</th><th>Allowed workspace</th><th>Code evidence</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+    }
+
+    const smartSemanticModelId = 'onnx-community/all-MiniLM-L6-v2-ONNX';
+    const smartSemanticModelModule = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1';
+    const smartSemanticPhrases = {
+        'employee.create':['How do I add another staff member to the system?','We hired a new cashier, how do I make their login?','Set up an account for a new colleague'],
+        'employee.deactivate':['How can I stop a former employee from using the system?','Disable an employee who has left','Turn off access for a departing staff member'],
+        'employee.activate':['How do I reactivate a previously disabled employee?','Bring a staff account back online','Let an inactive employee work again'],
+        'employee.permissions':['How do I give someone access to both departments?','Change an employee role or access rights','Allow a cashier to work in the other dashboard'],
+        'employee.find':['Where can I see our employee directory?','List all active accounts','Find a staff member in the system'],
+        'receipt.builder':['How do I move things around on a printed receipt?','Customize the receipt design or template','Edit the printed bill layout using the receipt builder'],
+        'receipt.settings':['How do I change our receipt header and business information?','Edit receipt branding and footer text','Configure receipt printing defaults'],
+        'receipt.reprint':['Where can I print a receipt from yesterday again?','Look up a previous customer receipt','Reprint an already recorded payment acknowledgement'],
+        'receipt.error':['Why is my receipt not printing or displaying?','The printer or preview does not work','I cannot open a saved receipt'],
+        'payment.method':['How do I configure which payment types staff can use?','Enable GCash or bank transfer as a payment method','Set up cash and non-cash methods'],
+        'payment.error':['Why is the cashier unable to record payment?','Payment amount rejected during checkout','The amount received or payment method is invalid'],
+        'payment.record':['How do I collect and record money the guest already paid?','Settle outstanding guest charges with cash or GCash','Record a partial payment at the counter'],
+        'discount.apply':['How can I give a senior citizen or PWD discount?','Apply a qualified statutory discount at checkout','Discount the bill for an eligible customer'],
+        'discount.error':['Why does the discount refuse to apply?','My PWD discount is rejected','The senior discount calculation is not working'],
+        'promotion.manage':['Create a restaurant promotion or sale','Change an active promotion rule','Set up promotional discounts in admin'],
+        'stay.create':['How do I register a guest checking into a room?','A visitor arrived and needs a stay','Put an arriving guest into a vacant room'],
+        'stay.checkout':['How do I check someone out?','A guest is leaving, how do I complete their checkout?','How to end a guest stay and free their room?','The visitor wants to leave the resort, finish their stay'],
+        'stay.checkout-error':['Why can’t I check out this guest?','Checkout is blocked by an unpaid incidental balance','The guest cannot leave because charges remain'],
+        'room.status':['Which rooms are occupied or vacant?','Where can I check room availability?','Show the room occupancy grid'],
+        'room.create':['How do I add or deactivate a room in admin?','Register a new room number','Maintain the active room inventory'],
+        'charge.post':['How do I put an extra service charge on a guest room?','Add towel rental to the active stay','Post an incidental charge to the room'],
+        'order.create':['How do I start taking a restaurant order for a table?','Open a new dining order','Customer is seated, start their food order'],
+        'order.additems':['The table wants more food; how do I add it?','Append menu items to the existing open order','Change an active restaurant cart to include another meal'],
+        'order.void':['How do I void an incorrect restaurant order?','Cancel a mistaken order with a reason','Reverse a wrongly posted food order'],
+        'order.roompost':['How do I charge a restaurant meal to the guest room?','Transfer a restaurant bill to a staying guest','Put their table order on their room account'],
+        'table.manage':['Admin wants to add or disable a restaurant table','Configure the dining table list','Change which tables are active'],
+        'table.status':['How can I tell if a table is occupied or awaiting payment?','Check available tables in the dining area','View current restaurant table status'],
+        'menu.manage':['How do I update restaurant menu prices or photos?','Create a new meal in the menu catalog','Manage food categories and inactive dishes'],
+        'service.manage':['Configure extra service rental prices in the catalog','Admin needs to add a new resort service','Manage the additional charges catalog'],
+        'audit.search':['Who changed or voided a record yesterday?','Where can I inspect the audit trail?','Check which employee posted a transaction'],
+        'ticket.create':['How do I report something broken to management?','Create a help request or support ticket','Ask administration to fix a workplace issue'],
+        'ticket.resolve':['How does Admin mark a support issue resolved?','Close a completed support ticket','Finish and resolve an assigned issue'],
+        'notification.view':['Where do I find the system notification bell?','Check unread alerts and updates','View messages about support changes']
+    };
+    let smartSemanticExtractor=null, smartSemanticLoad=null, smartSemanticIndex=null, smartSemanticIndexLoad=null;
+    let smartSemanticState='idle',smartSemanticMessage='',smartSemanticSource='',smartSemanticRunId=0;
+    const smartSemanticDebugFlag=new URLSearchParams(window.location.search).get('smarthelp_debug')==='1';
+    const smartSemanticDebugEnabled=()=>smartSemanticDebugFlag&&employee()?.role==='admin';
+    let smartSemanticLastRanking=null;
+    let smartSemanticDiagnosticsBusy=false;
+    let smartSemanticDiagnosticsResult=null;
+    let smartSemanticModelTiming=null;
+    let smartSemanticEmbeddingDimension=0;
+    let smartSemanticError='';
+    function smartSemanticDebugSnapshot(){
+        return {
+            version:'7.2', model:smartSemanticModelId,library:smartSemanticModelModule,backend:'wasm',
+            modelLoaded:!!smartSemanticExtractor,indexReady:!!smartSemanticIndex,
+            indexSize:smartSemanticIndex?.length||0, dimension:smartSemanticEmbeddingDimension||null,
+            modelLoadMs:smartSemanticModelTiming,
+            answerSource:smartSemanticSource||'none',state:smartSemanticState,
+            latestRanking:smartSemanticLastRanking,
+            selfTest:smartSemanticDiagnosticsResult,
+            lastError:smartSemanticError||null
+        };
+    }
+    async function smartSemanticInspectCache(){
+        if(!('caches' in window))return {available:false,matchingFiles:null};
+        try{
+            const names=await window.caches.keys();
+            let count=0;
+            for(const name of names.filter(x=>/transformers/i.test(x)).slice(0,8)){
+                const cache=await window.caches.open(name);
+                const keys=await cache.keys();
+                count+=keys.filter(x=>x.url.includes(smartSemanticModelId)).length;
+            }
+            return {available:true,matchingFiles:count,notes:'Matching entries found in accessible Transformers.js Cache Storage. A zero count does not prove files were not cached elsewhere.'};
+        }catch(e){return {available:true,matchingFiles:null,notes:'Cache inspection unavailable in this browser.'};}
+    }
+    async function smartSemanticDiagnosticsRun(){
+        if(!smartSemanticDebugEnabled()||smartSemanticDiagnosticsBusy)return;
+        smartSemanticDiagnosticsBusy=true;
+        smartSemanticDiagnosticsResult={status:'running'};
+        helpRenderRoot();
+        try{
+            const start=performance.now();
+            const rows=await smartSemanticPrepare();
+            const probes=[
+                {text:'How do I check someone out?',expected:'stay.checkout'},
+                {text:'How can I print yesterday’s receipt again?',expected:'receipt.reprint'},
+                {text:'Can I create an account for a new cashier?',expected:'employee.create'},
+                {text:'How can I post a dinner bill to a room?',expected:'order.roompost'}
+            ];
+            const vectors=await smartSemanticEmbed(probes.map(x=>x.text));
+            const samples=probes.map((probe,i)=>{
+                const rankings=smartSemanticRankScores(smartSemanticScores(rows,vectors[i])).slice(0,3);
+                const norm=Math.sqrt(vectors[i].reduce((sum,v)=>sum+v*v,0));
+                return {expected:probe.expected,top:rankings[0]?.id||null,topThree:rankings.map(x=>({id:x.id,score:Number(x.score.toFixed(4))})),vectorNorm:Number(norm.toFixed(4)),vectorFinite:vectors[i].every(Number.isFinite),expectedTop:rankings[0]?.id===probe.expected};
+            });
+            smartSemanticDiagnosticsResult={
+                status:samples.every(x=>x.vectorFinite&&x.vectorNorm>0.9&&x.vectorNorm<1.1)?'verified':'needs-review',
+                actualInference:true,dimension:smartSemanticEmbeddingDimension,
+                checkedAt:new Date().toISOString(),elapsedMs:Math.round(performance.now()-start),
+                sampleTopOneMatches:samples.filter(x=>x.expectedTop).length,
+                sampleTotal:samples.length,samples,cache:await smartSemanticInspectCache()
+            };
+            smartSemanticError='';
+        }catch(e){
+            smartSemanticError=String(e?.message||e).slice(0,180);
+            smartSemanticDiagnosticsResult={status:'failed',actualInference:false,error:smartSemanticError};
+        }finally{smartSemanticDiagnosticsBusy=false;if(helpMode==='panel'&&smartView==='diagnostics')helpRenderRoot();}
+    }
+    let smart72Error='';
+    let smart72Busy=false;
+    let smart72Cancel=false;
+    let smart72Result=null;
+    let smart72Progress={done:0,total:0,split:''};
+    const smart72DatasetFile='./phase72_benchmark_questions.json';
+    const smart74ChallengeFile='./phase74_safety_challenge.json';
+    const smart742BlindDatasetFile='./phase742_blind_evaluation.json';
+    const smart743SealedDatasetFile='./phase743_sealed_evaluation.json';
+    const smart72CodeVersion='7.4.4-safety-enforcement-v1';
+    function smart72LabelFor(question,found){
+        const routeResult=smartNlpRoute(question,'');
+        if(routeResult?.status==='clarify')return '__clarify__';
+        if(routeResult?.status)return '__unsupported__';
+        if(!found)return '__unsupported__';
+        return found.intent?.id||'__article__';
+    }
+    function smart72Check(expected,prediction){return expected===prediction;}
+    function smart72Stats(rows,method){
+        const total=rows.length;
+        const correct=rows.filter(x=>x.predictions[method]===x.expected).length;
+        const supported=rows.filter(x=>!x.expected.startsWith('__'));
+        const supportedCorrect=supported.filter(x=>x.predictions[method]===x.expected).length;
+        const negative=rows.filter(x=>x.expected==='__unsupported__');
+        const rejected=negative.filter(x=>x.predictions[method]==='__unsupported__').length;
+        const ambiguous=rows.filter(x=>x.expected==='__clarify__');
+        const clarified=ambiguous.filter(x=>x.predictions[method]==='__clarify__').length;
+        return {total,correct,accuracy:total?Number((100*correct/total).toFixed(2)):null,
+            supported:{total:supported.length,correct:supportedCorrect,accuracy:supported.length?Number((100*supportedCorrect/supported.length).toFixed(2)):null},
+            unsupported:{total:negative.length,rejected},ambiguous:{total:ambiguous.length,clarified},
+            wrongCount:total-correct};
+    }
+    function smart72Snapshot(){
+        const r=smart72Result;
+        if(!r)return null;
+        return {schema:'resortOS-phase72-evaluation-report',version:smart72CodeVersion,
+            generatedAt:r.generatedAt,datasetSha256:r.datasetSha256,datasetSplit:r.split,
+            complete:r.complete,actualInference:r.actualInference,availableMethods:r.availableMethods||['classic','semantic','hybrid'],model:smartSemanticModelId,
+            modelEmbeddingDimension:smartSemanticEmbeddingDimension,indexSize:smartSemanticIndex?.length||0,
+            modelBackend:'wasm',elapsedMs:r.elapsedMs,metrics:r.metrics,
+            annotationCaveat:'Exact task labels are a proxy for employee-facing factual answer and guide quality. Synthetic benchmark, not a real-world 99% reliability claim.',
+            rows:r.rows};
+    }
+    function smart72Markup(){
+        if(!smartSemanticDebugEnabled())return '';
+        const busy=smart72Busy, r=smart72Result,reviewMethod=r?.availableMethods?.includes('hybrid')?'hybrid':'classic';
+        const btns=`<div class="smart71-toolbar smart72-toolbar"><button type="button" class="smart-btn" data-action="help-benchmark-classic" data-id="development" ${busy?'disabled':''}>Quick classical baseline</button><button type="button" class="smart-btn smart-primary" data-action="help-benchmark-run" data-id="development" ${busy?'disabled':''}>Run development set (428)</button><button type="button" class="smart-btn" data-action="help-benchmark-run" data-id="holdout" ${busy?'disabled':''}>Run previously evaluated holdout (172)</button><button type="button" class="smart-btn smart-primary" data-action="help-benchmark-run" data-id="safety" ${busy?'disabled':''}>Run Phase 7.4.2 safety suite (123)</button><button type="button" class="smart-btn smart-primary" data-action="help-benchmark-run" data-id="blind" ${busy?'disabled':''}>Run previously evaluated blind set (144)</button><button type="button" class="smart-btn smart-primary" data-action="help-benchmark-run" data-id="sealed" ${busy?'disabled':''}>Run previously sealed set (132)</button>${busy?'<button type="button" class="smart-btn" data-action="help-benchmark-stop">Stop after batch</button>':''}</div>`;
+        const status=busy?`<div class="smart72-progress" role="status"><strong id="smart72-progress">Running ${smart72Progress.split}: ${smart72Progress.done}/${smart72Progress.total}</strong><div class="smart72-track"><span id="smart72-track" style="width:${smart72Progress.total?Math.floor(smart72Progress.done/smart72Progress.total*100):0}%"></span></div><small>Real MiniLM inference. Nothing is posted or saved to operational records.</small></div>`:'';
+        const stats=r?`<div class="smart71-results"><h3>${esc(r.split==='holdout'?'Previously evaluated holdout':r.split==='safety'?'Safety regression':r.split==='blind'?'Previously examined blind':r.split==='sealed'?'Previously sealed (regression)':'Development')} evaluation ${r.complete?'complete':'stopped'}</h3><p>${r.rows.length} questions processed · actual model inference ${r.actualInference?'yes':'no'} · ${Math.round(r.elapsedMs/1000)} s</p><div class="smart72-scores">${(r.availableMethods||['classic','semantic','hybrid']).map(name=>`<div><small>${name==='classic'?'Classical NLP':name==='semantic'?'MiniLM only':'Hybrid router'}</small><strong>${r.metrics[name].accuracy===null?'—':r.metrics[name].accuracy+'%'}</strong><span>${r.metrics[name].correct}/${r.metrics[name].total} exact expected outcomes</span><small>Supported: ${r.metrics[name].supported.correct}/${r.metrics[name].supported.total}</small><small>Unsupported abstention: ${r.metrics[name].unsupported.rejected}/${r.metrics[name].unsupported.total}</small><small>Ambiguity clarification: ${r.metrics[name].ambiguous.clarified}/${r.metrics[name].ambiguous.total}</small></div>`).join('')}</div><div class="smart71-toolbar"><button type="button" class="smart-btn smart-primary" data-action="help-benchmark-download">Download full JSON report</button><button type="button" class="smart-btn" data-action="help-benchmark-copy">Copy summary</button></div><h3>Examples needing review (${reviewMethod==='hybrid'?'hybrid':'classical'})</h3>${r.rows.filter(x=>x.predictions[reviewMethod]!==x.expected).slice(0,12).map(row=>`<div class="smart72-failure"><strong>${esc(row.question)}</strong><small>Expected: ${esc(row.expected)} · ${reviewMethod==='hybrid'?'Hybrid':'Classical'}: ${esc(row.predictions[reviewMethod])}${r.availableMethods?.includes('semantic')?` · Model top: ${esc(row.predictions.semantic)} (${Number(row.semanticTopScore||0).toFixed(3)})`:''}</small></div>`).join('')||'<p>No incorrect hybrid labels in this split.</p>'}<small>Download the JSON for all mistakes and top-three candidates. The 600-question historical benchmark and 123-question safety suite have already been examined; the 132-question previously sealed set is no longer an independent release test.</small></div>`:'';
+        return `<section class="smart72-section"><div class="smart2-screen-title"><span class="smart2-eyebrow">PHASE 7.4.4 · SAFETY ENFORCEMENT</span><h2>Decision engine benchmark</h2><p>Compare baseline NLP, MiniLM, and registry-verified task decisions. The old sealed set is now regression-only, not independent Phase 7.4.5 evidence. Results measure labeled task decisions, not answer correctness or production safety.</p></div><div class="smart71-notice">Historical benchmark: 600 questions (428 development, 172 previously examined holdout). Phase 7.4 safety regression: 123 questions (33 supported, 60 unsupported, 30 ambiguous). Previously evaluated blind set: 144 questions. PREVIOUSLY SEALED set: 132 questions (66 supported, 42 unsupported, 24 ambiguous). Model example index never reads benchmark questions. <strong>Scores evaluate matching, not full instruction quality.</strong></div>${btns}${status}${smart72Error?`<div class="smart71-notice smart71-error" role="alert">${esc(smart72Error)}</div>`:''}${stats||'<div class="smart71-notice">All built-in datasets are historical regressions. An independent Phase 7.4.5 evaluation must be newly authored and frozen before release-candidate testing.</div>'}</section>`;
+    }
+    async function smart72RunClassic(split){
+        if(!smartSemanticDebugEnabled()||smart72Busy||split!=='development')return;
+        smart72Busy=true;smart72Result=null;smart72Error='';smart72Progress={done:0,total:428,split};
+        const started=performance.now(),savedTopic=smartLastNlpTopic;
+        try{
+            const response=await fetch(split==='safety'?smart74ChallengeFile:smart72DatasetFile,{cache:'no-store'});
+            if(!response.ok)throw Error('Question dataset missing (HTTP '+response.status+')');
+            const contents=await response.text(),dataset=JSON.parse(contents);
+            if(dataset.items?.length!==600)throw Error('Unexpected question dataset');
+            let hash='unavailable';
+            if(window.crypto?.subtle){const dig=await window.crypto.subtle.digest('SHA-256',new TextEncoder().encode(contents));hash=Array.from(new Uint8Array(dig)).map(x=>x.toString(16).padStart(2,'0')).join('');}
+            const items=split==='safety'?dataset.items:dataset.items.filter(x=>x.split===split);
+            const rows=items.map(item=>{
+                smartLastNlpTopic='';
+                const predicted=smart72LabelFor(item.question,smartFind(item.question)[0]||null);
+                return {id:item.id,question:item.question,expected:item.expected,category:item.category,workspace:item.workspace,
+                    predictions:{classic:predicted},correct:{classic:item.expected===predicted}};
+            });
+            smart72Result={generatedAt:new Date().toISOString(),split,datasetSha256:hash,complete:true,actualInference:false,
+                availableMethods:['classic'],rows,metrics:{classic:smart72Stats(rows,'classic')},elapsedMs:Math.round(performance.now()-started)};
+        }catch(e){smart72Error=String(e?.message||e).slice(0,300);toast('Baseline failed: '+smart72Error);}
+        finally{smartLastNlpTopic=savedTopic;smart72Busy=false;if(helpMode==='panel'&&smartView==='diagnostics')helpRenderRoot();}
+    }
+    async function smart72Run(split){
+        if(!smartSemanticDebugEnabled()||smart72Busy||!['development','holdout','safety','blind','sealed'].includes(split))return;
+        smart72Busy=true;smart72Cancel=false;smart72Result=null;smart72Error='';smart72Progress={done:0,total:0,split};
+        const started=performance.now(),savedTopic=smartLastNlpTopic,savedRanking=smartSemanticLastRanking;
+        try{
+            const selectedDatasetFile=split==='safety'?smart74ChallengeFile:split==='blind'?smart742BlindDatasetFile:split==='sealed'?smart743SealedDatasetFile:smart72DatasetFile;
+            const response=await fetch(selectedDatasetFile,{cache:'no-store'});
+            if(!response.ok)throw Error('Question dataset '+selectedDatasetFile+' could not be loaded (HTTP '+response.status+'). Keep the benchmark JSON files beside index.html.');
+            const contents=await response.text();
+            const dataset=JSON.parse(contents);
+            if(!Array.isArray(dataset.items)|| (split==='safety' ? (dataset.schema!=='resortOS-phase74-safety-challenge-v1'||dataset.items.length!==123) : split==='blind' ? (dataset.schema!=='resortOS-phase742-blind-evaluation-v1'||dataset.items.length!==144) : split==='sealed' ? (dataset.schema!=='resortOS-phase743-unseen-capability-evaluation-v1'||dataset.items.length!==132) : (dataset.schema!=='resortOS-smarthelp-phase72-benchmark-v1'||dataset.items.length!==600)))throw Error('Benchmark dataset is missing or unexpected.');
+            const bytes=new TextEncoder().encode(contents);
+            let datasetSha256='unavailable';
+            if(window.crypto?.subtle){
+                const dig=await window.crypto.subtle.digest('SHA-256',bytes);
+                datasetSha256=Array.from(new Uint8Array(dig)).map(x=>x.toString(16).padStart(2,'0')).join('');
+            }
+            const items=(['safety','blind','sealed'].includes(split)?dataset.items:dataset.items.filter(x=>x.split===split)).map((item,i)=>({
+                ...item,
+                id:item.id||(split==='safety'?'safety-'+String(i+1).padStart(3,'0'):split==='blind'?'blind-'+String(i+1).padStart(3,'0'):split==='sealed'?'sealed-'+String(i+1).padStart(3,'0'):'question-'+String(i+1)),
+                category:item.category||(item.expected==='__unsupported__'?'unsupported':item.expected==='__clarify__'?'ambiguous':'supported'),
+                workspace:item.workspace||'not-specified'
+            }));
+            smart72Progress.total=items.length;
+            if(helpMode==='panel'&&smartView==='diagnostics')helpRenderRoot();
+            const corpus=await smartSemanticPrepare();
+            const rows=[];
+            for(let i=0;i<items.length;i+=12){
+                if(smart72Cancel)break;
+                const batch=items.slice(i,i+12);
+                const vectors=await smartSemanticEmbed(batch.map(x=>x.question));
+                batch.forEach((item,j)=>{
+                    smartLastNlpTopic='';
+                    const classicAnswer=smartFind(item.question)[0]||null;
+                    const classic=smart72LabelFor(item.question,classicAnswer);
+                    const ranking=smartSemanticRankScores(smartSemanticScores(corpus,vectors[j]));
+                    const top=ranking[0];
+                    const hybrid=smartSemanticBest(new Map(ranking.map(x=>[x.id,x.score])),item.question,classicAnswer);
+                    const predictions={classic,semantic:top?.id||'__unsupported__',hybrid:hybrid?.status?(hybrid.status==='clarify'?'__clarify__':'__unsupported__'):(hybrid?.intent?.id||classic)};
+                    rows.push({id:item.id,question:item.question,expected:item.expected,category:item.category,
+                        workspace:item.workspace,predictions,correct:{classic:smart72Check(item.expected,classic),semantic:smart72Check(item.expected,predictions.semantic),hybrid:smart72Check(item.expected,predictions.hybrid)},
+                        hybridDecision:smartSemanticLastRanking?.reason||'Unknown',semanticTopScore:top?Number(top.score.toFixed(4)):null,
+                        semanticTop3:ranking.slice(0,3).map(v=>({id:v.id,score:Number(v.score.toFixed(4))}))});
+                });
+                smart72Progress.done=rows.length;
+                const p=document.querySelector('#smart72-progress'),b=document.querySelector('#smart72-track');
+                if(p)p.textContent=`Running ${split}: ${rows.length}/${items.length}`;
+                if(b)b.style.width=Math.floor(rows.length/items.length*100)+'%';
+            }
+            smart72Result={generatedAt:new Date().toISOString(),split,datasetSha256,complete:rows.length===items.length,
+                actualInference:true,availableMethods:['classic','semantic','hybrid'],rows,metrics:Object.fromEntries(['classic','semantic','hybrid'].map(name=>[name,smart72Stats(rows,name)])),elapsedMs:Math.round(performance.now()-started)};
+        }catch(e){
+            smart72Result=null;
+            smart72Error=String(e?.message||e).slice(0,300);
+            toast('Benchmark failed: '+smart72Error);
+        }finally{
+            smartLastNlpTopic=savedTopic;smartSemanticLastRanking=savedRanking;smart72Busy=false;smart72Cancel=false;
+            if(helpMode==='panel'&&smartView==='diagnostics')helpRenderRoot();
+        }
+    }
+    function smart72Download(){
+        if(!smartSemanticDebugEnabled()||!smart72Result)return;
+        const blob=new Blob([JSON.stringify(smart72Snapshot(),null,2)],{type:'application/json'});
+        const url=URL.createObjectURL(blob),link=document.createElement('a');
+        link.href=url;link.download=`resortOS_Phase7_4_4_${smart72Result.split}_regression_report.json`;
+        document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);
+    }
+    async function smart72Copy(){
+        if(!smartSemanticDebugEnabled()||!smart72Result)return;
+        const {split,datasetSha256,metrics,complete,actualInference,availableMethods}=smart72Snapshot();
+        const text=JSON.stringify({split,datasetSha256,metrics,complete,actualInference,availableMethods},null,2);
+        try{await navigator.clipboard.writeText(text);toast('Benchmark results summary copied.');}
+        catch(e){toast('Clipboard unavailable. Download JSON instead.');}
+    }
+    function smartSemanticDiagnosticsMarkup(){
+        if(!smartSemanticDebugEnabled())return '';
+        const state=smartSemanticDebugSnapshot(),test=state.selfTest;
+        const chip=(value)=>`<span class="smart71-tag">${esc(String(value))}</span>`;
+        const value=(name,v)=>`<div class="smart71-stat"><small>${esc(name)}</small><strong>${esc(String(v??'Not measured'))}</strong></div>`;
+        const samples=test?.samples||[];
+        const ranking=state.latestRanking;
+        return `<div class="smart71-debug"><div class="smart2-screen-title"><span class="smart2-eyebrow">ADMIN TESTING · PHASE 7.1</span><h2>Semantic model diagnostics</h2><p>Read-only model inspection. No operational records are changed.</p></div><div class="smart71-notice">A semantic label in Ask means a candidate was selected. The verification below executes the real model on fixed example questions to confirm that inference works.</div><div class="smart71-statgrid">${value('Model loaded',state.modelLoaded?'Yes':'Not yet')}${value('Inference backend',state.backend.toUpperCase())}${value('Embedding dimensions',state.dimension)}${value('Indexed example phrases',state.indexReady?state.indexSize:'Not built')}${value('Model setup time',state.modelLoadMs===null?'Not measured':state.modelLoadMs+' ms')}${value('Last Ask source',state.answerSource||'None')}</div><div class="smart71-model"><strong>Pretrained model</strong><code>${esc(state.model)}</code><small>Transformers.js 3.8.1 · Browser Cache API enabled where supported. Cache availability is not proof of offline operation.</small></div><div class="smart71-toolbar"><button type="button" class="smart-btn smart-primary" data-action="help-semantic-test" ${smartSemanticDiagnosticsBusy?'disabled':''}>${smartSemanticDiagnosticsBusy?'Running real inference…':'Run live model self-test'}</button><button type="button" class="smart-btn" data-action="help-semantic-copy">Copy diagnostic report</button></div>${test?`<section class="smart71-results"><h3>Real inference ${chip(test.status)}</h3>${test.elapsedMs!==undefined?`<p>${test.sampleTopOneMatches}/${test.sampleTotal} samples ranked the expected task first · ${test.elapsedMs} ms including index setup.</p>`:''}${test.error?`<p class="smart71-error">${esc(test.error)}</p>`:''}${test.cache?`<p>Cache API: ${test.cache.available?'available':'unavailable'} · matching model files: ${test.cache.matchingFiles===null?'unknown':test.cache.matchingFiles}.</p>`:''}${samples.map(x=>`<div class="smart71-sample"><strong>Expected: ${esc(x.expected)}</strong><small>Top match: ${esc(x.top||'none')} ${x.expectedTop?'✓':'· review'} · embedding norm ${x.vectorNorm}</small><div>${x.topThree.map(y=>`<span>${esc(y.id)} ${y.score.toFixed(3)}</span>`).join('')}</div></div>`).join('')}</section>`:'<div class="smart71-notice">No live inference test run in this browser session yet.</div>'}${ranking?`<section class="smart71-results"><h3>Most recent Ask ranking</h3><p>Answer source: ${esc(ranking.source)} · Decision: ${esc(ranking.reason)}. Scores are similarities, not probabilities of correctness.</p>${ranking.candidates.map(x=>`<div class="smart71-rank"><strong>${esc(x.id)}</strong><span>${Number(x.score).toFixed(3)}</span></div>`).join('')}</section>`:'<p class="smart71-muted">Ask a question to inspect its ranked task candidates. Question text is not stored in this report.</p>'}<p class="smart71-muted">Use this on a private staging build only. The URL flag reveals diagnostics but is not an authentication boundary; account permissions remain enforced separately.</p>${smart743RegistryMarkup()}${smart72Markup()}<button type="button" class="smart-ask-back" data-action="help-smart-tab" data-id="ask">← Return to SmartHelp Ask</button></div>`;
+    }
+    async function smartSemanticCopyReport(){
+        if(!smartSemanticDebugEnabled())return;
+        const copy={...smartSemanticDebugSnapshot(),selfTest:smartSemanticDiagnosticsResult};
+        try{await navigator.clipboard.writeText(JSON.stringify(copy,null,2));toast('Semantic diagnostic report copied.');}
+        catch(e){toast('Clipboard access blocked. Open this page over HTTPS to enable copying.');}
+    }
+    function smartSemanticCandidates(){
+        const records=[];
+        for(const intent of smartIntentDefinitions){
+            const articles=Object.values(intent.articles||{}).map(id=>HELP_ARTICLES.find(a=>a.id===id)).filter(Boolean);
+            if(!articles.length)continue;
+            const representative=articles[0];
+            records.push({id:intent.id,text:`${representative.title}. ${representative.summary}. ${intent.topic} task in resortOS.`});
+            for(const phrase of smartSemanticPhrases[intent.id]||[])records.push({id:intent.id,text:phrase});
+        }
+        return records;
+    }
+    function smartSemanticSetStatus(state,message){
+        smartSemanticState=state;smartSemanticMessage=message||'';
+        const label=document.querySelector('#smart-semantic-status');
+        if(label){label.textContent=smartSemanticMessage;label.dataset.state=state;}
+    }
+    async function smartSemanticLoadModel(){
+        if(smartSemanticExtractor)return smartSemanticExtractor;
+        if(smartSemanticLoad)return smartSemanticLoad;
+        smartSemanticLoad=(async()=>{
+            const started=performance.now();
+            smartSemanticSetStatus('loading','Loading semantic language model · first use requires an internet connection');
+            const {pipeline,env}=await import(smartSemanticModelModule);
+            env.allowLocalModels=false;
+            env.useBrowserCache=true;
+            smartSemanticExtractor=await pipeline('feature-extraction',smartSemanticModelId,{
+                device:'wasm',
+                progress_callback:(info)=>{
+                    if(info?.status==='progress' && Number.isFinite(info.progress)){
+                        const progress=Math.max(0,Math.min(100,Math.floor(info.progress/10)*10));
+                        smartSemanticSetStatus('loading',`Loading semantic language model · ${progress}% of current file`);
+                    }
+                }
+            });
+            smartSemanticModelTiming=Math.round(performance.now()-started);
+            smartSemanticError='';
+            return smartSemanticExtractor;
+        })();
+        try{return await smartSemanticLoad;}
+        catch(e){smartSemanticLoad=null;throw e;}
+    }
+    async function smartSemanticEmbed(texts){
+        const extractor=await smartSemanticLoadModel();
+        const output=await extractor(texts,{pooling:'mean',normalize:true});
+        if(!output?.data || !output?.dims)throw Error('Unexpected embedding shape');
+        const dim=output.dims[output.dims.length-1];
+        const values=output.data;
+        if(dim<64 || values.length!==texts.length*dim)throw Error('Embedding output mismatch');
+        smartSemanticEmbeddingDimension=dim;
+        if(!Array.from(values).every(Number.isFinite))throw Error('Embedding output contains non-finite numbers');
+        const vectors=[];
+        for(let i=0;i<texts.length;i++)vectors.push(Float32Array.from(values.subarray(i*dim,(i+1)*dim)));
+        return vectors;
+    }
+    async function smartSemanticPrepare(){
+        if(smartSemanticIndex)return smartSemanticIndex;
+        if(smartSemanticIndexLoad)return smartSemanticIndexLoad;
+        smartSemanticIndexLoad=(async()=>{
+            const corpus=smartSemanticCandidates();
+            smartSemanticSetStatus('indexing','Understanding verified resortOS tasks…');
+            const rows=[];
+            for(let i=0;i<corpus.length;i+=12){
+                const batch=corpus.slice(i,i+12);
+                const vectors=await smartSemanticEmbed(batch.map(x=>x.text));
+                for(let j=0;j<batch.length;j++)rows.push({...batch[j],vector:vectors[j]});
+            }
+            smartSemanticIndex=rows;
+            return rows;
+        })();
+        try{return await smartSemanticIndexLoad;}
+        catch(e){smartSemanticIndexLoad=null;throw e;}
+    }
+    function smartSemanticDot(a,b){
+        let total=0;
+        for(let i=0;i<a.length;i++)total+=a[i]*b[i];
+        return total;
+    }
+    function smartSemanticRankScores(scores){
+        return [...scores.entries()].map(([id,score])=>({id,score})).sort((a,b)=>b.score-a.score);
+    }
+    function smartSemanticScores(rows,vector){
+        const scores=new Map();
+        for(const row of rows)scores.set(row.id,Math.max(scores.get(row.id)??-1,smartSemanticDot(vector,row.vector)));
+        return scores;
+    }
+
+
+    function smart74Boundary(question,previousTopic=''){
+        const q=String(question||'').toLowerCase().replace(/[’]/g,"'").replace(/\s+/g,' ').trim();
+        if(!q)return {status:'unknown',reason:'Empty question'};
+        const outside=[
+            /\b(?:biometric|fingerprint|face recognition|remote hardware control|robotic housekeeping|smart lock|door locks?|lock using this software)\b/,
+            /\b(?:remotely (?:reprogram|repair|fix|control|operate)|remote(?:ly)? (?:reprogram|repair|fix|control|operate)|(?:reprogram|repair|fix|operate).*remotely|motion detection|smart sensors?|fitness watch|heart rate)\b/,
+            /\b(?:shopee|lazada|amazon marketplace|wholesale vendor|supplies directly from|supply vendor|external e-commerce|e-commerce store|online shopping|cinema ticket|movie ticket)\b/,
+            /\b(?:stock share values?|share values?|stock prices?|pay(?:ment)? links? (?:that|to|for)|send payment links?|external payment gateway|online payment gateway|charging (?:their|a) credit card|charge cards? online|charge (?:the|a|their|customer's) (?:credit|debit) card(?:s)?|charge.*(?:card|cards).*online)\b/,
+            /\b(?:bir tax return|file (?:a )?bir|government tax invoices?|official government receipts?|ferry ride|ferry ticket|airline ticket|doctor appointment|medical appointment|passport for a|passport issuance)\b/,
+            /\b(?:going to rain|rain tomorrow|weather tomorrow|forecast tomorrow|overnight rates?|nightly prices?|room rental fees?|accommodation fees?|renting rooms? overnight)\b/,
+            /\b(?:legal government|legal advice|medical advice|business law|lab results)\b/,
+            /\b(?:grab\s?food|food\s?panda|deliveroo|doordash|uber\s?eats|online food delivery|delivery orders? (?:from|with|through|via))\b/,
+            /\b(?:whats\s?app|facebook messenger|telegram|viber|signal messenger|text (?:a|the|our) guest|sms|send (?:guests?|customers?) (?:messages?|texts?|emails?))\b/,
+            /\b(?:airbnb|booking\.com|agoda|expedia|traveloka|public online reservations?|booking engines?|import (?:external )?bookings?|channel manager)\b/,
+            /\b(?:pay(?:ing)? property tax|property taxes|file (?:a )?tax return|pay (?:a )?tax bill|bir filing|official bir|government tax portal|tax authority|tax payments?)\b/,
+            /\b(?:tourist visa|visa application|immigration status|passport application|renew.*passport|national id|government id|id card issuance|social security claim|insurance claims?|claims? filing|file an insurance)\b/,
+            /\b(?:cryptocurrenc(?:y|ies)|bitcoin|ethereum|forex|foreign exchange trad|foreign exchange from|stock[ -]?market|share prices|trading app|trading account|invest(?:ment)? portfolio)\b/,
+            /\b(?:currency (?:conversion|exchange rate)|convert (?:usd|eur|dollars?|pesos?)|exchange rates?|how many (?:kilograms?|meters?|pounds?|miles?|liters?)|convert (?:units?|pounds?|kilograms?))\b/,
+            /\b(?:recommend (?:a |the )?(?:laptop|phone|restaurant|hotel|movie)|most expensive laptop|best (?:place|restaurant|food|cafe|hotel) (?:to eat|near|around)|places? to (?:visit|eat)|restaurant recommendations?)\b/,
+            /\b(?:smok(?:e|ing) (?:inside|in|at)|public parks?|traffic law|legal age|local laws?|what is the weather|typhoon forecast|weather forecast|earthquake forecast)\b/,
+            /\b(?:stream (?:a )?(?:movie|music|video)|watch (?:a )?movie|netflix|youtube video|play games?|play a song|spotify)\b/,
+            /\b(?:wifi router|wi[ -]?fi settings|network router|configure.*router|repair (?:a |the )?(?:broken )?(?:physical )?(?:printer|computer|laptop|router).*remotely|remotely repair|remote hardware repair)\b/,
+            /\b(?:floor plan|draw (?:a )?map|3d model|architectural design|building blueprint|resort floorplan|property blueprint)\b/,
+            /\b(?:bank (?:transfer|withdrawal) (?:directly|automatically)|(?:automatically|directly) (?:complete|make|execute|send|initiate).*bank transfer|bank account opening|open (?:a )?bank account|transfer money (?:to|from)|initiate (?:a )?bank transfer|send money to|withdraw funds|charge (?:a )?credit card directly|process a card charge|collect money online)\b/,
+            /\b(?:electricity consumption sensors?|smart meter|iot sensor|security camera|cctv|door lock|smart lock|keycard|thermostat|freezer temperature|remote door unlock)\b/,
+            /\b(?:external (?:email|chat|messaging|social media)|send.*(?:through|via|using) (?:messaging|social media|third.party)|sync.*(?:external|third.party)|connect (?:to|with) (?:third.party|external) (?:booking|social|delivery))\b/,
+            /\b(?:a(?:i|utomated) (?:voice )?phone calls?|call (?:a|the) guest.s phone|contact.*guest.*(?:phone|text|sms)|video call|mass mailing|newsletter|marketing automation)\b/,
+            /\b(?:robotic housekeeping|laundry machine control|smart hotel automation|fire alarm controls?|medical records?|fingerprint scanner|biometric attendance)\b/,
+            /\b(?:nightly room rates?|charge for accommodation|accommodation fees?|room rent(?:al)? fee|rent rooms? by the night|overnight accommodation price)\b/,
+            /\b(?:payroll|pay slips?|staff wages?|staff salaries|timesheet|staff attendance|time tracking|clock in|clock out)\b/,
+            /\b(?:supply ordering|buy (?:new )?(?:equipment|stock|towels)|order (?:more )?supplies from|shop online|product recommendations?)\b/
+        ];
+        if(outside.some(re=>re.test(q)))return {status:'unknown',reason:'Feature or subject is outside the verified resortOS capability catalog'};
+        const pronouns=/\b(?:it|this|that|those|them|another one|the other|the same|which one|one|something|what happened|the correct page|that process|next step|instead|yesterday.s version)\b/;
+        const vague=[
+            /^(?:can|could|would) you (?:take|bring|guide|show) me to (?:the )?(?:right|correct|same) (?:page|place|screen)\??$/,
+            /\b(?:how do i change the status|what (?:is|would be) the next step|what should (?:i|the cashier|we) do instead|how do we enable it again|what if i clicked it|i forgot which account it was|how does the other dashboard handle it|what do i do with this|how do i stop that|what if i accidentally clicked it|which of these do i select|where do i reverse the last thing|should i restore the older version|can you show me the right page|can the other user also do this)\b/,
+            /^(?:it|that|this|the button|the option|the customer|someone|the thing|something|this amount|the amount|a different result|i got a different result)\b.*\b(?:wrong|another one|strange|failing|missing|not working|different|stuck|happening|error|result|status|version|why)\b[?.!]*$/,
+            /^(?:can i|could i|do i|how do i|where do i) (?:print|save|delete|edit|change|find|open|add|remove|enable|disable|cancel|undo|confirm) (?:that|this|it|another one|the other one|the saved thing)\??$/
+        ];
+        if(!previousTopic&&vague.some(re=>re.test(q)))return {status:'clarify',reason:'The request needs an explicit task or screen before an answer is safe'};
+        const evidence=smart73DomainEvidence(question);
+        const signal=smart73ActionSignals(question);
+        const ids=Object.keys(signal).filter(id=>signal[id]>0);
+        const directlyAnchored=!!evidence || ids.some(id=>{
+            const domain=id.split('.')[0];
+            const anchors={employee:/\b(?:staff|employee|cashier|worker|receptionist|waiter|login|account|user|department|permission)\b/,
+                receipt:/\b(?:receipt|print|printer|acknowledg|template|slip)\b/,
+                payment:/\b(?:payment|paid|cash|tender|settle|balance|gcash|bank transfer)\b/,
+                discount:/\b(?:discount|pwd|senior|vat|concession)\b/,
+                stay:/\b(?:stay|guest|arrival|departure|checkout|check out|check in)\b/,
+                room:/\b(?:room|occupancy|vacant)\b/,
+                order:/\b(?:order|food|restaurant|meal|dining|cart|dish)\b/,
+                table:/\b(?:table|restaurant)\b/,
+                menu:/\b(?:menu|food|dish|category)\b/,
+                service:/\b(?:service|incidental|additional charge)\b/,
+                charge:/\b(?:charge|incidental|extra service)\b/,
+                audit:/\b(?:audit|activity log|trace|history of changes)\b/,
+                ticket:/\b(?:ticket|support request|report.*issue)\b/,
+                notification:/\b(?:notification|notification bell|unread alert)\b/,
+                promotion:/\b(?:promotion|promo|promotional campaign)\b/};
+            return !!anchors[domain]?.test(q);
+        });
+        if(!directlyAnchored){
+            const appAnchor=/\b(?:resortos|front desk|front counter|restaurant|staff|employee|cashier|receptionist|reception|worker|server|colleague|coworker|team|user|login|logins|account|profile|credential|credentials|dashboard|guest|visitor|stay|room|receipts?|reprint|printer|printout|printing|invoice|acknowledg\w*|template|payment|transaction|tender|settlement|charge|balance|table|tables|dining|diner|dish|drink|food|menu|chicken|price|pricing|order|bill|discount|promotion|ticket|support|notification|alerts?|bell|audit|accountability|records|incidental|service|services|check.?out|check.?in|cash|vat|occupied|vacant|department|management|admin|issue|resort name|business contact)\b/.test(q);
+            if(!previousTopic && pronouns.test(q) && (q.split(/\s+/).length<=13) && !appAnchor && !/\b(?:this app|the system|resortos|smarthelp)\b/.test(q))return {status:'clarify',reason:'No verified referent for an abbreviated follow-up'};
+            if(appAnchor)return null;
+            return {status:'unknown',reason:'No verified resortOS capability was identified; no guide will be guessed'};
+        }
+        return null;
+    }
+
+    function smart73Scope(question,previousTopic=''){
+     const q=String(question||'').toLowerCase().replace(/[’]/g,"'").replace(/\s+/g,' ').trim();
+     if(!q)return {status:'unknown',reason:'Empty question'};
+     if(/\b(?:delete|erase|wipe|purge)\b.*\b(?:audit (?:trail|log)|all audit records|entire audit)\b/.test(q) || /\b(?:which|what) guest.*\b(?:arrive|arrives|will arrive)\b.*\b(?:next month|next year)\b/.test(q))return {status:'unknown',reason:'No verified resortOS function for this request'};
+     const multiTasks=[
+      /\b(?:front desk.*(?:take|record|collect).*payment)\b.*\b(?:restaurant.*post.*room)\b/,
+      /\b(?:receipt|printing|print it)\b.*\b(?:and|then)\b.*\b(?:staff access|give staff access|deactivat\w*.*(?:user|employee))\b/,
+      /\b(?:apply|discount|pwd)\b.*\b(?:both|across)\b.*\b(?:room.*food|food.*room)\b/,
+      /\b(?:difference between|compare)\b.*\b(?:charge|payment)\b.*\b(?:and|versus|vs|from)\b.*\b(?:charge|payment)\b/,
+      /\b(?:create|add|register)\b.*\b(?:employee|staff|cashier)\b.*\b(?:and|then)\b.*\b(?:permissions?|privileges?|access)\b/,
+      /\b(?:void|cancel)\b.*\b(?:and|then)\b.*\b(?:refund)\b/
+     ];
+     if(multiTasks.some(re=>re.test(q)))return {status:'clarify',reason:'Multiple independent workflows; ask which to address first'};
+
+     const unsupported=[
+      /\b(?:airbnb|booking\.com|online public booking|online booking engine|import bookings|hotel public booking)\b/,
+      /\b(?:nightly (?:accommodation|room|rental)|room rental (?:fee|price)|rental fees|accommodation rate|room rates? per night)\b/,
+      /\b(?:official bir|bir tax|tax return|government passport|immigration status|scan guest passports)\b/,
+      /\b(?:ambulance|thermostat|cctv|motion detection|electrical breaker|freezer temperature|heart rates?)\b/,
+      /\b(?:online supplier|replacement laptop batteries|purchase new kitchen equipment|order more towels from an online)\b/,
+      /\b(?:flight|ferry|airline|uber|airport ride|luggage allowances|dhl|parcels shipped)\b/,
+      /\b(?:marketing email|gmail password|sms messages|telecom service|currency exchange rate|typhoon|weather forecast)\b/,
+      /\b(?:bank account|transfer money from gcash|directly transfer money|submit invoices.*external accounting)\b/,
+      /\b(?:payroll|wages|salaries|staff time clock|attendance payroll|housekeeping cleaners|loyalty points|redeem prizes)\b/,
+      /\b(?:room keycard|door locks?|facial recognition.*kiosk)\b/,
+      /\b(?:automatically.*(?:refund|transfer|book))\b/
+     ];
+     if(unsupported.some(re=>re.test(q)))return {status:'unknown',reason:'Unsupported resortOS feature'};
+     const concrete=/(?:employee|staff|cashier|reception|operator|user account|account access|department access|receipt|printer|checkout|check out|guest|visitor|room|stay|table|restaurant|food|menu|order|bill|payment|cash|gcash|bank transfer|discount|senior|pwd|promotion|ticket|support|audit|notification|service|charge|price|vat|catalog|cashier|manager|shift)/;
+     const floating=/\b(?:it|that|this|them|they|one|the thing|the option|the button|something|same thing|what we discussed|what about|the old one|the other|back|next)\b/;
+     const generic=/\b(?:can i|how (?:do|can) i|what (?:if|should)|where (?:do|does|is)|which one|why|explain|fix|save|delete|update|change|remove|reverse|finalize|switch|turn|need|do i|does that|help me)\b/;
+     if(!previousTopic && !concrete.test(q) && ((floating.test(q)&&generic.test(q))||/\b(?:the button is missing|the option|the other department|what should i do next|i need to delete this one)\b/.test(q)))return {status:'clarify',reason:'Unresolved reference without conversation context'};
+     if(!previousTopic && /^(?:what if (?:they|he|she) already paid\??|who is allowed to do that\??|can i turn it off\??|the button is missing\.?|i need to delete this one\.?|i want to do the same thing again\.?)$/.test(q))return {status:'clarify',reason:'Context required'};
+     return null;
+    }
+    function smart73ActionSignals(question){
+     const q=String(question||'').toLowerCase().replace(/[’]/g,"'");
+     const signals={};
+     const tests={
+      'employee.activate':/\b(?:reactivat\w*|restore.*(?:account|login|staff|employee|user)|bring.*back|back at work|returning after leave|made operational again|turn.*(?:account|profile).*back on|inactive.*(?:back|again|return))\b/,
+      'employee.deactivate':/\b(?:deactivat\w*|disable.*(?:staff|employee|cashier|user|account|login)|(?:staff|employee|cashier|user|account|login).*disable|resign\w*|terminated|no longer log in|shouldn.t be able to|former employee|ex-cashier|block.*(?:employee|staff|account)|mark.*inactive.*(?:leaves|employee)|switch.*access.*off)\b/,
+      'employee.permissions':/\b(?:permissions?|privileges?|access rights?|roles?|department access|both departments?|both work areas?|which dashboards?|authoriz\w*|assign.*(?:department|front desk|restaurant)|(?:staff|employee|cashier|waiter|receptionist).*?(?:dashboard|front desk|restaurant).*?(?:access|open|work|cover))\b/,
+      'employee.create':/\b(?:new hire|hired|hire|recruited|new staff|new cashier|onboard|first-time|provision|new account|new login|create credentials|create.*(?:employee|staff|account)|register.*(?:staff|employee|operator)|add.*(?:employee|cashier|staff))\b/,
+      'employee.find':/\b(?:roster|directory|list of staff|staff list|employees are currently active|view.*(?:accounts|employees)|look up.*(?:staff|employee|account)|existing staff account|browse.*(?:registered|staff))\b/,
+      'receipt.builder':/\b(?:receipt builder|drag.*receipt|layout|design.*receipt|receipt.*design|move.*(?:fields?|elements?|sections?)|template.*(?:layout|design))\b/,
+      'receipt.settings':/\b(?:receipt.*(?:footer|header|business information|branding|company|logo|settings)|(?:footer|header|business information|branding|company|logo).*receipt|printing defaults?|receipt defaults?)\b/,
+      'receipt.reprint':/\b(?:reprint|print.*(?:again|previous|already|past|older)|copy.*(?:receipt|bill)|old receipt|past receipt|receipt history|already issued.*(?:bill|receipt)|without charging twice)\b/,
+      'receipt.error':/\b(?:receipt|print|printer|preview|thermal|acknowledg\w*)\b.*\b(?:blank|wrong|broken|fail\w*|stuck|not printing|not open|doesn.t work|won.t|problem|error|never|cannot|can.t|missing)\b|\b(?:blank|wrong|broken|fail\w*|stuck|problem|error|cannot|can.t)\b.*\b(?:receipt|printer|preview|print)\b/,
+      'payment.method':/\b(?:payment method|payment type|payment option|cash.*non.cash|gcash.*configure|enable.*(?:gcash|bank transfer)|method.*(?:configure|manage))\b/,
+      'payment.error':/\b(?:payment|paid|settle|tender|amount received|balance)\b.*\b(?:reject\w*|fail\w*|uncertain|invalid|doesn.t|can.t|cannot|wrong|not accepted|stuck|error|problem|not reflect|still shows unpaid)\b|\b(?:reject\w*|fail\w*|uncertain|invalid|can.t|cannot|error|problem)\b.*\b(?:payment|paid|settle|amount)\b/,
+      'payment.record':/\b(?:record.*(?:paid|payment|cash)|collect.*(?:payment|money|cash)|receive.*(?:payment|money)|settle.*(?:bill|charge|balance)|mark.*paid|partial payment|take payment)\b/,
+      'discount.error':/\b(?:discount|pwd|senior|vat exemption)\b.*\b(?:not|failed|can.t|cannot|won.t|error|wrong|rejected|ineligible|problem)\b/,
+      'discount.apply':/\b(?:apply.*(?:discount|pwd|senior)|discount.*(?:eligible|qualified|senior|pwd)|senior citizen discount|statutory discount|give.*discount)\b/,
+      'promotion.manage':/\b(?:promotion|promotional|campaign|promo)\b/,
+      'stay.checkout-error':/\b(?:checkout|check out|guest.*depart|stay.*close|room.*vacant)\b.*\b(?:block|error|can.t|cannot|unpaid|unsettled|fail\w*|not|refus\w*)\b/,
+      'stay.checkout':/\b(?:check\s+(?:(?:someone|somebody|a guest|a visitor|the guest|a customer|them)\s+)?out|checkout|guest.*(?:leave|depart)|finish.*stay|end.*stay|complete.*departure|finalize.*stay|room departure)\b/,
+      'stay.create':/\b(?:check\s?in|register.*(?:guest|stay)|new guest|new stay|arrival|arriving|assign.*vacant room)\b/,
+      'room.create':/\b(?:add.*room|new room|create.*room|deactivat\w*.*room|room.*deactivat\w*|room inventory|room catalog|room number|configure rooms?)\b/,
+      'room.status':/\b(?:occupancy|vacan\w*|occupied|room status|room availability|rooms grid|which rooms)\b/,
+      'order.void':/\b(?:void.*order|cancel.*order|reverse.*order|mistaken order|wrong order|duplicate order)\b/,
+      'order.roompost':/\b(?:restaurant|table|meal|food|bill|dining)\b.*\b(?:guest room|room account|charge.*room|post.*room|room bill|transfer.*room)\b|\b(?:post.*meal|charge.*meal.*room)\b/,
+      'order.additems':/\b(?:existing order|current order|more food|more items|another item|extra meal|another plate|append.*item|add.*(?:item|food|meal|drink).*order|quantity.*order)\b/,
+      'order.create':/\b(?:new order|start.*order|create.*order|take.*order|place.*order|open.*order|food order|restaurant order)\b/,
+      'table.manage':/\b(?:add.*table|remove.*table|disable.*table|configure.*table|table.*inactive|manage.*tables)\b/,
+      'table.status':/\b(?:table.*(?:occupied|available|status|dining|awaiting payment)|available tables|table status)\b/,
+      'menu.manage':/\b(?:menu.*(?:price|photo|category|manage|edit|update)|food categories|menu catalog|add.*dish|new meal.*menu|deactivate.*dish)\b/,
+      'service.manage':/\b(?:service.*(?:catalog|rate|price|configure|manage)|rental.*(?:rate|price)|extra.*service.*price)\b/,
+      'charge.post':/\b(?:additional charge|incidental|post.*(?:extra|charge|service).*room|add.*(?:service|charge).*stay|towel rental.*room)\b/,
+      'audit.search':/\b(?:audit|who.*(?:changed|voided|settled|posted)|trace.*(?:change|void)|staff activity|activity log|logs of changes)\b/,
+      'ticket.resolve':/\b(?:resolve.*ticket|ticket.*resolv|close.*(?:issue|ticket)|mark.*(?:issue|ticket).*resolved|finish.*issue)\b/,
+      'ticket.create':/\b(?:create.*ticket|raise.*ticket|report.*issue|support request|submit.*(?:problem|ticket)|create.*support)\b/,
+      'notification.view':/\b(?:notification|alert|unread.*(?:message|update)|bell icon)\b/
+     };
+     for(const [id,re] of Object.entries(tests))if(re.test(q))signals[id]=1;
+     if(/\b(?:not|without|rather than|instead of)\s+(?:add|create|register|delete|void|refund)\b/.test(q)){
+      for(const id of ['employee.create','order.create','order.void','room.create','ticket.create'])signals[id]=0;
+     }
+     if(/\b(?:do not|don't|not to|without)\s+(?:charge|collect|pay|record.*payment)\b/.test(q))signals['payment.record']=0;
+     return signals;
+    }
+    function smart73DomainEvidence(question){
+     const q=String(question||'').toLowerCase().replace(/[’]/g,"'").replace(/\s+/g,' ').trim();
+     const has=(re)=>re.test(q);
+     const person=has(/\b(?:employee|employe|staff|cashier|receptionist|reception|operator|waiter|worker|user|teammate|coworker|team profile|somebody|account|acount|login)\b/);
+     const money=has(/\b(?:payment|paid|pay|cash|money|tender|balance|amount|settle|settlement|charge|bill|incidental)\b/);
+     const concession=has(/\b(?:discount|concession|reduction|senior|pwd|disability|statutory relief|vat exemption)\b/);
+     const departure=has(/\b(?:checkout|check\s?out|departure|departing|leave|leaves|leaving|end(?:ing)? a stay|closing occupancy|releasing? (?:the )?room|releasing? it|finish (?:a )?stay|finish.*occupancy|guest.*vacant|room.*vacant|clears? .*occupied room)\b/);
+     const food=has(/\b(?:restaurant|table|food|meal|dinner|dish|beverage|dessert|drink|order|menu|dining|pos|ticket|customer)\b/);
+     const service=has(/\b(?:extra service|additional service|incidental service|equipment|towel|rental|additional charge|extra charge|extra service option)\b/);
+     const bad=has(/\b(?:fail(?:s|ed|ing)?|doesn.t|does not|won.t|will not|cannot|can.t|invalid|reject(?:ed|ing)?|blocked?|stop(?:s|ped)?|missing|not available|not eligible|ineligible|won't|error|problem|unsuccessful|never|uncertain|not showing|not reflect|not working)\b/);
+     const hint=(id)=>({id,reason:'Verified task-family action evidence',source:'task-evidence'});
+     if(has(/\b(?:notification|notifications|unread alert|notification bell|recent alert)\b/))return hint('notification.view');
+     if(has(/\b(?:audit trail|audit log|staff activity log|staff.*activity|trace.*void|void history|who.*changed|changes made by|history of.*void)\b/))return hint('audit.search');
+     if(person){
+      if(has(/\b(?:turn.*back on|reactivat\w*|activat\w*.*again|how.*\bactivat\w*|\bactivat\w*.*(?:them|him|her|account|employee)|enable.*(?:inactive|disabled)|(?:inactive|disabled).*active again|restore\w*|returned?|returning|back at work|back.*(?:job|work|team)|approved to return|made operational again|turn.*on again|resume.*account|reinstate\w*)\b/) && has(/\b(?:inactive|disabled|suspended|old|former|previously|after leave|again|return|back|user|account|staff|cashier|receptionist|employee)\b/))return hint('employee.activate');
+      if(has(/\b(?:deactivat\w*|disable\w*|inactive|resign\w*|terminated|no longer|shouldn.t|mustn.t|block.*(?:account|employee|staff)|access.*off|someone leaves|former|ex.cashier)\b/) && !has(/\b(?:reactivat\w*|activat\w*.*again|how.*\bactivat\w*|\bactivat\w*.*(?:them|him|her|account|employee)|enable.*inactive|inactive.*active again|restore\w*|return(?:ed|ing)?|back at work|back.*team|approved to return|made operational again|turn.*on again)\b/))return hint('employee.deactivate');
+      if(has(/\b(?:permissions?|privileges?|access|authoriz\w*|assign|cover reception|help with dining|work areas?|dashboard\w*|both departments?|both work areas?|departments?)\b/) && has(/\b(?:work|restaurant|dining|reception|front desk|dashboard|department|privilege|permission|access|authoriz|assign|weekend|role)\b/) && !has(/\b(?:new account|new login|new employee|new hire|onboard|provision|create credential)\b/))return hint('employee.permissions');
+      if(has(/\b(?:roster|directory|existing staff account|look up|find|browse|see.*(?:employee|staff)|staff list|currently active|not add one|not create)\b/))return hint('employee.find');
+      if(has(/\b(?:hired|new hire|new employee|new staff|new cashier|first.time|onboard|provision|create.*(?:login|account|user|staff|employee|credential)|add.*(?:employee|cashier|staff)|give.*(?:login|account))\b/))return hint('employee.create');
+     }
+     if(has(/\b(?:support request|ticket|issue|printer|payment|technical problem)\b/) && has(/\b(?:how.*report|report.*(?:it|issue|problem)|request.*help|contact.*(?:admin|support))\b/) && !has(/\b(?:finished|fixed|resolved|close it|close.*ticket|final status)\b/))return hint('ticket.create');
+     if(has(/\b(?:saved printed record|printed record|saved receipt|earlier checkout.*record)\b/) && has(/\b(?:find|printed|saved|earlier|checkout)\b/))return hint('receipt.reprint');
+     if(has(/\b(?:receipt|printer|print|preview|acknowledg\w*|proof of payment|payment slip)\b/)){
+      if(has(/\b(?:missing|can.t open|cannot open|not open|unable to open|won.t open|blank|fail\w*|not printing|not printed|broken|doesn.t|wrong|problem|error|stuck|nothing appears)\b/))return hint('receipt.error');
+     }
+     if(has(/\b(?:payment|tender|bank|gcash|e.wallet|payment method|payment option|payment dropdown|payment choice)\b/) && has(/\b(?:dropdown|option|choice|configure|add.*bank|new bank|method|e.wallet|replace.*payment|selectable|enable.*bank)\b/) && !has(/\b(?:payment confirmation|payment operation|payment won.t|payment never|amount received.*invalid)\b/))return hint('payment.method');
+     if(has(/\b(?:invalid amount|check (?:the )?amount received|amount received.*(?:invalid|check)|payment.*(?:not sure|uncertain)|transaction.*(?:uncertain|went through|successful))\b/) && has(/\b(?:payment|paid|amount|checkout|transaction|received|balance)\b/))return hint('payment.error');
+     if(has(/\b(?:food charges|meal charges)\b/) && has(/\b(?:post|charge|room)\b/) && has(/\b(?:rather than|instead of|guest|stay|room)\b/))return hint('order.roompost');
+     if(money){
+      if(has(/\b(?:don.t know whether|not sure (?:if|whether)|verify.*(?:paid|payment)|still shows? unpaid|won.t finish|cannot finish|can.t finish|never completes|not accepted|not recorded|not reflect|reject\w*|operation won.t|failed validation|payment confirmation.*(?:fail|never|stuck)|collect payment.*(?:but|doesn.t|won.t|can.t|cannot)|paid or not|invalid amount)\b/))return hint('payment.error');
+      if(has(/\b(?:already handed|handed.*money|cashier.*money|money.*logged|reducing.*outstanding|reduce.*outstanding|record.*(?:payment|money|cash)|collect.*(?:payment|money)|mark.*paid|partial payment|amount received|register.*(?:payment|cash)|payment.*received)\b/) && !bad)return hint('payment.record');
+     }
+     if(concession){
+      if(has(/\b(?:not available|isn.t available|not eligible|is not eligible|not qualified|disabled|fail\w*|reject\w*|validation|can.t|cannot|won.t|error|not work|not working|not apply|keeps.*reject|ineligible)\b/))return hint('discount.error');
+      if(has(/\b(?:apply|eligible|disability|senior|pwd|use|give|grant|reduce)\b/) && has(/\b(?:discount|concession|reduction|senior|pwd|disability|eligible)\b/) && !bad)return hint('discount.apply');
+     }
+     if(has(/\b(?:promotion|promotional|promo|seasonal|offer|campaign|food deal|special deal|discount.*event|expired.*offer)\b/) && has(/\b(?:dates?|change|update|disable|expired|edit|manage|create|add|offer|promotion|promo)\b/) && !has(/\b(?:failed|reject|not eligible)\b/))return hint('promotion.manage');
+     if(has(/\b(?:expected checkout date|scheduled checkout date|checkout date field|planned departure date)\b/))return hint('stay.create');
+     if(has(/\b(?:room dashboard|rooms grid|occupancy dashboard)\b/) && has(/\b(?:vacant|empty|occupied|status|room)\b/))return hint('room.status');
+     if(has(/\b(?:verify|review|check)\b.*\b(?:unsettled|outstanding|open)\b.*\b(?:before checkout|before check out)\b/))return hint('stay.checkout');
+     if(has(/\b(?:table|tables|restaurant|dining)\b.*\b(?:waiting for checkout|awaiting payment|table checkout|checkout status)\b/))return hint('table.status');
+     if(has(/\b(?:guest|stay|occupancy|departure|checkout|check out)\b/)&&has(/\b(?:unable to finish|unable to complete|wont|won.t|will not|cannot|can.t|rejects|disabled|unavailable|won't|block\w*|stops?|prevent|failed|error|not eligible)\b/) && !has(/\b(?:restaurant|table|food|menu|discount|payment screen|transaction|money handed|cash handed)\b/))return hint('stay.checkout-error');
+     if(has(/\b(?:room|occupancy|checkout|check out)\b/) && has(/\b(?:wont|won.t|can.t|cant|cannot|unable|won't|not).*\b(?:vacant|checkout|check out)\b/))return hint('stay.checkout-error');
+     if(has(/\b(?:room|occupancy)\b.*\b(?:won.t become vacant|cannot become vacant|not become vacant|won.t be vacant)\b/))return hint('stay.checkout-error');
+     if(departure && has(/\b(?:guest|visitor|resident|family|room|occupancy|stay|checkout|departure|departing|leaves|leaving)\b/) && !(has(/\b(?:restaurant|dining|food|meal|menu|table|discount|order)\b/) && !has(/\b(?:guest|room|stay|visitor|resident|family)\b/))){
+      if(has(/\b(?:block\w*|stops?|cannot|can.t|cant|won.t|wont|refuse\w*|unpaid|unsettled|outstanding|error|fail\w*|not able|prevent\w*|not allowed|unavailable|disabled)\b/))return hint('stay.checkout-error');
+      if(has(/\b(?:departing|leaves|leaving|key|finish|finaliz\w*|vacant|clear\w*|end\w*|departure|checkout|check out|releas\w*|occupied room)\b/))return hint('stay.checkout');
+     }
+     if(has(/\b(?:start.*(?:visit|stay)|visit record|new.*occupant|arriv\w*|new occupant\w*|new guest\w*|check\s?in|register.*(?:guest|stay)|assign.*room|record.*occupants?)\b/) && has(/\b(?:room|guest|family|reception|occupant|stay|arrival)\b/))return hint('stay.create');
+     if(has(/\b(?:empty accommodations|currently empty|currently vacant|which rooms? (?:are|is)|room availability|occupancy|room status|vacant rooms?)\b/) && !has(/\b(?:register|check in|new guest|arrival)\b/))return hint('room.status');
+     if(service){
+      if(has(/\b(?:create|record|log|add)\b.*\b(?:incidental service fee|additional service fee|extra service fee)\b/) && !has(/\b(?:new option|catalog|admin system management)\b/))return hint('charge.post');
+      if(has(/\b(?:create|define|configure)\b.*\b(?:incidental service|additional service|service fee)\b/) && !has(/\b(?:guest|stay|room|account)\b/))return hint('service.manage');
+      if(has(/\b(?:new.*(?:additional service|service option|service type|incidental service option)|add.*(?:service option|service type)|service.*(?:option|catalog|price|configure|manage)|create.*(?:additional )?service.*(?:type|option)?|configure.*extra service rates?)\b/) && !has(/\b(?:guest.s account|payable extra service|due|post.*room)\b/))return hint('service.manage');
+      if(has(/\b(?:borrow\w*|extra service|additional service|incidental|quantity|amount due|record.*(?:charge|equipment|service)|post.*charge|log.*amount|log.*charge)\b/))return hint('charge.post');
+     }
+     if(food){
+      if(has(/\b(?:reverse|void|cancel|incorrect|mistaken|duplicate|wrong)\b/) && has(/\b(?:order|ticket)\b/))return hint('order.void');
+      if(has(/\b(?:already ordered|ordered but|existing order|open order|current (?:restaurant )?(?:bill|order)|more (?:dishes|drinks|beverages|items|food)|another (?:beverage|drink|dish|dessert|item|plate)|extra (?:menu item|item|dish)|append|add.*(?:existing|current)\b|increase.*quantity|without starting another order|add.*(?:fries|dessert|drinks|food).*cart)\b/))return hint('order.additems');
+      if(has(/\b(?:customer|restaurant|dinner|meal|food|bill|table)\b/) && has(/\b(?:put.*(?:on|to).*stay|post.*room|charge.*room|guest.room|room account|bill.*room|transfer.*room|room bill|post.*food charges.*(?:rather than|instead of) collect)\b/))return hint('order.roompost');
+      if(has(/\b(?:start.*(?:ticket|order)|create.*order|open.*order|new order|empty in pos|take.*order|place.*order|first order|begin.*billing|begin.*ticket)\b/) && !has(/\b(?:without starting|already.*order|existing order|open order|current order)\b/))return hint('order.create');
+      if(has(/\b(?:dining tables?|numbered table|table record|table layout|manage.*table|adding.*table|add.*table|configure.*tables?|new.*table)\b/) && has(/\b(?:new|add|adding|numbered|management|layout|configure|record|manage|restaurant)\b/) && !has(/\b(?:billing|begin.*bill|order|meal|customer|server)\b/))return hint('table.manage');
+     }
+     if(has(/\b(?:notification|notifications|unread alert|notification bell|recent alert)\b/))return hint('notification.view');
+     if(has(/\b(?:activity trail|audit trail|audit log|activity log|trace.*(?:settled|posted|voided)|posted or settled charges|who.*(?:posted|settled|changed))\b/))return hint('audit.search');
+     if(has(/\b(?:ticket|support|issue|request)\b/)){
+      if(has(/\b(?:finished|finish\w*|fixed|handled|resolved|resolve|final status|mark.*(?:complete|resolved)|close.*(?:ticket|it)|update.*status)\b/) && !has(/\b(?:how.*submit|create|raise|new ticket)\b/))return hint('ticket.resolve');
+      if(has(/\b(?:request.*help|ask.*(?:administrator|admin).*help|support request|raise.*ticket|report.*issue|create.*ticket|submit.*ticket|contact.*(?:admin|support))\b/))return hint('ticket.create');
+     }
+     return null;
+    }
+
+    function smart74FamilyConsistency(question,selected,evidenceId=''){
+        const q=String(question||'').toLowerCase().replace(/[’]/g,"'");
+        if(evidenceId)return true;
+        const families=[];
+        const anchors=[
+            ['employee',/\b(?:employee|staff|cashier|worker|receptionist|workforce|colleague|coworker|personnel|user account|user login|login|credentials?|permissions?|privileges?|department access)\b/],
+            ['receipt',/\b(?:receipt|receipts|reprint|printer|printing|printout|acknowledg\w*|receipt template)\b/],
+            ['payment',/\b(?:payment|payments|tender|amount received|pay the balance|settled balance|cash received|gcash)\b/],
+            ['discount',/\b(?:discount|pwd|senior citizen|vat exemption|concession)\b/],
+            ['stay',/\b(?:check.?in|check.?out|guest stay|guest departure|registration of guests|arriving guest)\b/],
+            ['room',/\b(?:room status|room occupancy|rooms grid|room list|vacant room)\b/],
+            ['order',/\b(?:restaurant order|food order|food ticket|add.*dish|menu order|restaurant bill)\b/],
+            ['table',/\b(?:restaurant table|dining table|table availability|table status)\b/],
+            ['menu',/\b(?:food menu|menu catalog|menu category|menu prices?)\b/],
+            ['ticket',/\b(?:support ticket|help ticket|issue ticket|support request)\b/],
+            ['audit',/\b(?:audit log|activity log|audit trail)\b/],
+            ['notification',/\b(?:notification bell|notifications|unread alerts?)\b/],
+            ['promotion',/\b(?:promotion|promotional campaign|promo code)\b/]
+        ];
+        for(const [family,re] of anchors)if(re.test(q))families.push(family);
+        if(families.length!==1)return true;
+        const family=families[0];
+        const allowed={
+            employee:['employee.'],receipt:['receipt.'],payment:['payment.'],discount:['discount.'],
+            stay:['stay.'],room:['room.','stay.','charge.'],order:['order.'],table:['table.','order.'],
+            menu:['menu.','order.'],ticket:['ticket.'],audit:['audit.'],notification:['notification.'],
+            promotion:['promotion.','discount.']
+        }[family]||[];
+        return allowed.some(prefix=>selected.startsWith(prefix));
+    }
+
+    function smart742VerifiedOperation(question){
+        const q=String(question||'').toLowerCase().replace(/[’]/g,"'").replace(/\s+/g,' ').trim();
+        const has=re=>re.test(q);
+        const evidence=(id,description)=>({id,reason:'Verified capability and '+description,source:'verified-action'});
+        const receipt=has(/\b(?:receipts?|reprint|acknowledg\w*|payment slips?|printouts?|print layout|thermal template)\b/);
+        const discount=has(/\b(?:discounts?|pwd|senior citizen|vat exemption|concession)\b/);
+        const menu=has(/\b(?:dish|dishes|menu|food item|menu item|menu category)\b/);
+        const service=has(/\b(?:additional services?|incidental services?|extra services?|service catalog|service catalogue|catalog service|extra-service)\b/);
+        if(receipt && has(/\b(?:reprint (?:button|control)|print (?:button|control)|receipt (?:window|preview|popup))\b/) && has(/\b(?:fail\w*|doesn.t|does not|won.t|cannot|can.t|stuck|unresponsive|not respond|not open|no response|broken)\b/))return evidence('receipt.error','printing failure');
+        if(receipt && (has(/\b(?:reprint|print (?:it |this |the |an? )?(?:again|another time)|another copy|second copy)\b/) || has(/\bprint\b.*\breceipts?\b.*\bagain\b/)) && !has(/\b(?:reprint button|reprint control|printing fails|reprinting fails|cannot reprint|can.t reprint|reprint does not|reprint doesn.t|reprint won.t)\b/))return evidence('receipt.reprint','historical receipt reprinting');
+        if(receipt && has(/\b(?:customiz\w*|arrang\w*|rearrang\w*|layout|align\w*|position\w*|move|relocat\w*|design|preview a redesign|build a template)\b/) && has(/\b(?:element\w*|block\w*|field\w*|heading|template|receipt|print|layout|position)\b/))return evidence('receipt.builder','visual receipt layout editing');
+        if(receipt && has(/\b(?:business name|resort name|company name|business (?:details|information|contact)|brand(?:ing)?|header|footer|default paper|default size|receipt settings)\b/) && has(/\b(?:change|configur\w*|edit\w*|updat\w*|show\w*|print\w*|display\w*|set)\b/))return evidence('receipt.settings','receipt identity and branding configuration');
+        if(menu && has(/\b(?:photos?|pictures?|images?|photograph\w*|descriptions?|pric\w*|categor\w*)\b/) && has(/\b(?:edit\w*|chang\w*|updat\w*|replace|upload|manage|adjust|remove|add|set|modify)\b/))return evidence('menu.manage','menu catalog editing');
+        if(service && has(/\b(?:catalog|catalogue|price|pricing|rate|rates|option|configuration|configure|admin)\b/) && has(/\b(?:change|updat\w*|edit\w*|set|adjust|manage|modify|configure|create|add|where)\b/) && !has(/\b(?:post (?:it|one|the|an|a) to (?:a )?room|charge to (?:a )?room|guest(?:'s)? (?:stay|account))\b/))return evidence('service.manage','additional-service catalog management');
+        if(has(/\b(?:incidental charge|additional charge|extra charge)\b/) && has(/\b(?:post|add|record|log|charge)\b/) && has(/\b(?:room|stay|guest)\b/))return evidence('charge.post','guest stay incidental charge posting');
+        if(discount && has(/\b(?:refus\w*|reject\w*|fail\w*|error|disabled|cannot|can.t|won.t|doesn.t|not (?:apply|working|available|accepted)|unsuccessful|problem|troubleshoot|investigat\w*)\b/))return evidence('discount.error','discount troubleshooting');
+        if(discount && has(/\b(?:apply|enter|use|grant|select|give)\b/) && !has(/\b(?:refus\w*|reject\w*|fail\w*|error|disabled|cannot|can.t|won.t|doesn.t|not working|troubleshoot|investigat\w*)\b/))return evidence('discount.apply','eligible discount application');
+        if(has(/\b(?:payment|tender|balance|charges?)\b/) && has(/\b(?:settle|record|collect|mark.*settled|pay|paid|received)\b/) && !has(/\b(?:fail\w*|error|reject\w*|cannot|can.t|doesn.t|stuck|unpaid after)\b/) && !has(/\b(?:nightly|rental fee|external gateway|charge card|online card)\b/))return evidence('payment.record','payment record settlement');
+        return null;
+    }
+
+    function smart73Decide(question,ranked,classicId,previousTopic=''){
+     const boundary=smart74Boundary(question,previousTopic);
+     if(boundary)return {id:boundary.status==='clarify'?'__clarify__':'__unsupported__',reason:boundary.reason,source:'capability-boundary'};
+     const scope=smart73Scope(question,previousTopic);
+     const operationEvidence=smart742VerifiedOperation(question);
+     const taskEvidence=smart73DomainEvidence(question);
+     if(scope && (scope.status!=='clarify'||scope.reason==='Multiple independent workflows; ask which to address first'||!(operationEvidence||taskEvidence)))return {id:scope.status==='clarify'?'__clarify__':'__unsupported__',reason:scope.reason,source:'guard'};
+     if(operationEvidence)return operationEvidence;
+     if(taskEvidence)return taskEvidence;
+     const classic=classicId||'__unsupported__';
+     const rankedCandidates=ranked||[];
+     const first=rankedCandidates[0];
+     if(!first)return {id:'__unsupported__',reason:'No model evidence for a verified workflow',source:'capability-boundary'};
+     const signalIds=Object.keys(smart73ActionSignals(question)).filter(id=>smart73ActionSignals(question)[id]>0);
+     if(!taskEvidence && !signalIds.length){
+         return {id:'__unsupported__',reason:'No verified action evidence; semantic similarity alone cannot establish feature support',source:'capability-boundary'};
+     }
+     const choices=rankedCandidates.slice(0,5).map(x=>({id:x.id,score:x.score+(x.id===classic?0.05:0)}));
+     if(classic&&!classic.startsWith('__')&&!choices.some(x=>x.id===classic))choices.push({id:classic,score:0.33});
+     choices.sort((a,b)=>b.score-a.score);
+     let selected=choices[0]?.id||classic;
+     const q=String(question).toLowerCase().replace(/[’]/g,"'");
+     const confident=(id)=>rankedCandidates.slice(0,5).some(x=>x.id===id)||classic===id;
+     const force=(id,re)=>{if(re.test(q)&&confident(id))selected=id;};
+     force('employee.deactivate',/\b(?:resigned|terminated|ex-cashier|no longer log in|disable.*(?:employee|staff|account|cashier)|block.*(?:old employee|account)|switch.*access.*off)\b/);
+     force('employee.activate',/\b(?:reactivate|restor\w*.*account|back at work|returning after leave|made operational again|turn.*account.*on again)\b/);
+     force('employee.permissions',/\b(?:department privileges|permission\w*|which dashboards|department access|both departments|both work areas|front desk plus restaurant|change.*(?:dashboard|access)|authorize.*(?:work|department))\b/);
+     force('employee.find',/\b(?:not add one|don't add|not create|workforce account directory|roster|which employees.*active)\b/);
+     force('receipt.reprint',/\b(?:reprint|copy of proof of payment|second copy|printed again|previously issued|past receipt|another copy|yesterday.s payment slip)\b/);
+     force('receipt.error',/\b(?:receipt|print|preview|proof of payment)\b.*\b(?:can.t open|doesn.t open|blank|failed|not print|never appears|stays blank)\b/);
+     force('payment.error',/\b(?:payment|collect payment|payment confirmation|payment screen|operation)\b.*\b(?:won.t finish|cannot|can.t|failed|doesn.t|never completes|not reflect|still shows unpaid|won.t record)\b/);
+     force('payment.record',/\b(?:record cash|cash actually collected|register cash|collect payment|received cash|record a partial payment)\b/);
+     force('stay.checkout-error',/\b(?:checkout|check out|guest departure|departure)\b.*\b(?:unpaid|unsettled|blocked|won.t finish|cannot|failed|unavailable)\b/);
+     force('stay.checkout',/\b(?:finalize.*departures|guest.*depart|finish.*stay|complete.*checkout|guest.*leav)\b/);
+     force('order.additems',/\b(?:already saved.*add|add.*one more plate|increase the quantity|existing food ticket|in.progress food ticket)\b/);
+     force('order.roompost',/\b(?:table.s food.*guest room|post.*food.*room|charge.*meal.*room|bill.*linked.*room)\b/);
+     force('ticket.resolve',/\b(?:mark.*ticket.*resolved|finalize a handled.*issue|repaired.*mark.*ticket|finish.*workplace issue)\b/);
+     if(selected!==classic && !rankedCandidates.some(x=>x.id===selected) && first.score<0.43)selected=classic;
+     if(!smart74FamilyConsistency(question,selected,taskEvidence?.id||'')){
+         const replacement=choices.filter(x=>smart74FamilyConsistency(question,x.id,'') && x.score>=0.45);
+         if(replacement.length && replacement[0].score>=0.60)selected=replacement[0].id;
+         else return {id:'__unsupported__',reason:'Task family conflicts with the requested operation; no guide was guessed',source:'capability-boundary'};
+     }
+     return {id:selected,reason:selected===classic?'Classical corroboration':'Semantic task reranking',source:selected===classic?'hybrid-classic':'hybrid-semantic'};
+    }
+
+    function smart73Guard(question,previousTopic=''){
+        const boundary=smart74Boundary(question,previousTopic);
+        if(boundary)return boundary;
+        const scope=smart73Scope(question,previousTopic);
+        const operationEvidence=smart742VerifiedOperation(question);
+        const taskEvidence=smart73DomainEvidence(question);
+        if(scope && (scope.status!=='clarify'||scope.reason==='Multiple independent workflows; ask which to address first'||!(operationEvidence||taskEvidence)))return scope;
+        const legacy=smartNlpRoute(question,previousTopic);
+        if(legacy?.status && !(legacy.status==='clarify' && (operationEvidence||taskEvidence)) && !/\b(?:dessert|menu catalog|food catalog)\b/i.test(question))return {status:legacy.status,reason:'Existing verified NLP safeguard'};
+        return null;
+    }
+    function smartSemanticBest(scores,query,initial){
+        const ranked=smartSemanticRankScores(scores);
+        // Classifiers only supply candidate rankings. Permission to instruct
+        // comes exclusively from the deterministic 7.4.4 safety evidence.
+        const decision=smart744Policy(query,null);
+        smartSemanticLastRanking={source:decision.source,reason:decision.reason,
+            candidates:ranked.slice(0,5).map(x=>({id:x.id,score:Number(x.score.toFixed(4))})),decision:decision.id,evidence:decision.evidence||null};
+        if(decision.id==='__clarify__')return {status:'clarify'};
+        if(decision.id==='__unsupported__')return {status:'unknown'};
+        return smart744AnswerFor(decision)||{status:'unknown'};
+    }
+    async function smartSemanticResolve(question,requestId,initialResult,expectedRole,expectedEmployee){
+        try{
+            const rows=await smartSemanticPrepare();
+            if(requestId!==smartSemanticRunId || role!==expectedRole || String(employee()?.id||'')!==expectedEmployee)return;
+            smartSemanticSetStatus('checking','Comparing your question with resortOS tasks…');
+            const vector=(await smartSemanticEmbed([question]))[0];
+            if(requestId!==smartSemanticRunId || role!==expectedRole || String(employee()?.id||'')!==expectedEmployee)return;
+            const scores=smartSemanticScores(rows,vector);
+            const match=smartSemanticBest(scores,question,initialResult);
+            if(requestId!==smartSemanticRunId || role!==expectedRole || String(employee()?.id||'')!==expectedEmployee)return;
+            if(match?.status){
+                smart73AskStatus=match.status;
+                smartAnswer=null;
+                smartSemanticSource='guard';
+                smartSemanticSetStatus('ready',match.status==='clarify'?'More context is needed':'No verified resortOS procedure found');
+            }else if(match){
+                smart73AskStatus=null;
+                smartAnswer=match;
+                smartLastNlpTopic=match.intent.topic;
+                smartSemanticSource='semantic';
+                smartSemanticSetStatus('ready','Answer matched by semantic language model');
+            }else{
+                smartSemanticSource='classic';
+                smartSemanticSetStatus('ready','Verified task matching is active');
+            }
+            if(helpMode==='panel' && smartQuestion===question && smartView==='ask'){
+                const target=document.querySelector('.smart-ask-message-assistant');
+                if(target)target.innerHTML=`<div class="smart-ask-assistant-label"><span class="smart-ask-mini-orb">✦</span><strong>SmartHelp</strong><span>Verified guidance</span></div>${smartAnswerMarkup()}`;
+            }
+        }catch(e){
+            if(requestId!==smartSemanticRunId || role!==expectedRole || String(employee()?.id||'')!==expectedEmployee)return;
+            smartSemanticSource='classic';
+            smartSemanticError=String(e?.message||e).slice(0,180);
+            smartSemanticLastRanking={source:'guard',reason:'Model inference or load failed; avoiding unverified instructions',candidates:[]};
+            smart73AskStatus='unknown';
+            smartAnswer=null;
+            smartSemanticSetStatus('unavailable','Could not verify an answer safely. Please use Help Articles or Support & Issues.');
+            if(helpMode==='panel'&&smartQuestion===question&&smartView==='ask'){
+                const target=document.querySelector('.smart-ask-message-assistant');
+                if(target)target.innerHTML=`<div class="smart-ask-assistant-label"><span class="smart-ask-mini-orb">✦</span><strong>SmartHelp</strong><span>Verified guidance</span></div>${smartAnswerMarkup()}`;
+            }
+        }
+    }
+    function smartSemanticStatusMarkup(){
+        if(!smartQuestion)return '';
+        const msg=smartSemanticMessage||'Looking for the best verified resortOS task…';
+        return `<div class="smart-semantic-status" id="smart-semantic-status" data-state="${esc(smartSemanticState)}" role="status" aria-live="polite">${esc(msg)}</div>`;
+    }
+    const smartTypoKnownEnglish = new Set('a abandon abandoned abandoning abandonment abashed abbe abdomen abdominal abduction ability able abnormal abnormally abolish abolished abolishing abolition abolitionists abominable about above abroad abrupt abruptly abscess abscesses absence absent absolute absolutely absorbed absorption abstract absurd abundance abundant abuse abuses accent accept accepted accepting access accessible accessing accident accidental accidentally accidents accompanied accompany accompanying accomplish accomplished accord accordance according accordingly account accountant accounts accumulated accumulation accurate accurately accused accustomed achieved achievement achievements aching acid acknowledge acknowledged acknowledgement acquaintance acquaintances acquainted acquire acquired acquisition acre acres across act acted acting actinomyces actinomycosis action actions activate active actively activities activity acts actual actually acute adams adapted add added adding addition additional additions address addressed addresses addressing adds adenoma adequate adherent adhesions adjacent adjoining adjust adjusted adjutant adjutants adler admin administered administration administrations administrative administrator admirable admiration admired admission admit admits admitted admitting adobo adopt adopted adoption adored adult adults advance advanced advancing advantage advantageous advantages adventure adventures adverse advertisement advice advisable advise advised advisers advocate advocated advocates aet affair affairs affect affectation affected affecting affection affectionate affectionately affections affects afferent afford afforded affording affords afraid afresh africa after afternoon afterward afterwards again against age aged agencies agency agent agents ages aggravated aggression aggressive agitated agitation ago agony agree agreeable agreed agreement agricultural agriculture ahead aid aide aided aides aim aimed aims air airline airport akin alabama alarm alarmed alaska albany alcohol alert alerts alexander alexeevich alexis alice alien aliens alike alive all alleged allegiance alliance allied allies allow allowance allowed allowing allows ally almost alone along aloud alpatych already also altar alter alteration alterations altered alternative although altogether always amazed amazement amazing ambassador ambition amenable amendment amendments america american americans amiable amid ammunition amnesty among amongst amount ample amputation amuse amused amusement amusing an anaesthesia anaesthetic analysis anatole anatomical anatomy ancient ancients and andrew aneurysm aneurysmal aneurysms angel anger angioma angle angles angrily angry animal animals animated animation anisya ankle ankylosis anna anne annette annexation announce announced announcement annoyance annoyed annual annually another answer answered answering answers antecedent anterior anteroom anthrax anti anticipated antiseptic antiseptics anus anxiety anxious anxiously any anybody anyhow anyone anything anywhere aorta apart apartment apartments apologize apology app appalachians apparatus apparent apparently appeal appealed appeals appear appearance appearances appeared appearing appears append appendix appetite apple appliances applicable application applications applied apply applying appointed appointment appointments apportioned apposition appreciate appreciated approach approached approaching appropriate approval approve approved approximately april apron apt arakcheev arbitrary arbitration arborescent arch archduke architect archive ardent are area areas aren argued argument arguments arise arises arising aristocracy aristocratic arizona arkansas arm armchair armed armfeldt armies arms army arose around arouse aroused arousing arrange arranged arrangement arrangements arranging arrest arrested arresting arrival arrive arrived arriving arsenic arsenical art arterial arteries arterio arteritis artery arthritis arthropathies arthur article articles articular artificial artillery artisans arts as ascended ascending ascertain ascii ascribed aseptic ashamed ashes aside ask asked asking asks asleep aspect aspects assailed assault assembled assemblies assembly assent assented asserted assign assigned assist assistance assistant assistants associate associated association assume assumed assumes assuming assumption assurance assure assured assuring astonished astonishment astounding astronomy asylum at ate atlantic atmosphere atrophy attach attached attachment attack attacked attacking attacks attain attained attainment attains attempt attempted attempting attempts attend attendance attendant attended attending attention attentions attentive attentively attenuated attitude attract attracted attraction attractive attribute attributed audible audience audit auersperg august aunt aureus auricular austerlitz australia australian austria austrian austrians author authorities authority authorized authorizing authors automatically autumn avail availability available avenue average avert avoid avoided avoiding avulsion await awaited awaiting awake awakened awakening aware away awe awful awfully awhile awkward awkwardly awkwardness awoke axilla axillary axis baby bachelor bacilli bacillus back background backs backward backwards bacon bacteria bacterial bad badge badly bag baggage bagration bags baker balaga balance balances balashev balcony bald ball balloon ballot ballroom balls baltimore band bandage bandaged bandages bands bank banker bankers banking banks banner bar barclay bare bargain bark barn baron barred barrier base based baseness basis basketball bass bast bath bathed baths battalion battalions batteries battery battle battlefield battles bay bayonets bazdeev beamed beaming beams bear beard bearers bearing bears beast beat beaten beating beausset beautiful beauty became because beckoned become becomes becoming bed bedroom beds bedstead bee beeches beef been beer bees before beforehand beg began beggar begged begging begin beginning beginnings begins begun behalf behave behaved behind being beings belief believe believed believes believing bell bells belly belong belonged belonging belongings belongs belova beloved below belt bench bend bending beneath benefactor beneficial benefit benjamin bennigsen bent berezina berg berlin berthier beside besides best bet betray betrayed betraying betrothed better between bewildered beyond bezukhov bezukhova bible biceps bier big biggest bilateral bilibin bill billing billion bills bind binding biographical bir birch birches bird birds birth biscuit bismuth bit bitch bite bites biting bitten bitter bitterly bitterness black bladder blade blame blamed blandly blank bleed bleeders bleeding bless blessed blessing blew blind bliss blissful blister blisters block blockade blocked blocking blocks blonde blood bloodless bloodstained bloody blow blowing blown blows blue bluetooth bluish blunt blush blushed blushing board boards boasted boat boats bodies body bogdanich bogdanovna bogucharovo bohemia boil boiled boiling boils bold boldly boldness bolkhovitinov bolkonskaya bolkonski bonaparte bond bondage bondmen bonds bone bones bony book books boom boone boot boots booty boracic border borders bore bored boris born borne borodino borrowed borzoi borzois boscombe bosom boss bosses boston both bottle bottles bottom bought bound boundaries boundary bounded bounds bourienne bow bowed bowels bowing box boxes boy boys brachial bradstreet brain branch branches branding brandy braunau brave breach bread breadth break breakdown breakfast breaking breaks breast breath breathe breathed breathing breathless breckinridge bred breeches brick bride bridge bridges brief briefly bright brightened brighter brightly brilliant bring bringing brings briony brisk briskly bristol britain british brittle broad broadsheets brodie broke broken brother brotherhood brothers brought brow brown brownish brows browser bruised bruising bruit brunn brush brushed bryan bubo buffalo buffoon build builder building buildings built bulk bullet bullets bundle bundles buonaparte burden burdened burdens bureau buren buried burke burn burned burning burns bursa bursae bursal bursitis burst bursting bursts bushes bushy business businesses bustle busy but butler buttock button buttoned buxhowden buy buying buzzing by cab cabin cabinet cadet caesar cafeteria calamity calcaneus calcification calcified calculated caleche calf calhoun california call called callender calling callous calls callus calm calmly came camp campaign campaigns campfire campfires camps can canada canal canals cancel cancellous cancer cancerous cancers candidate candidates candle candles cannon cannonade cannot cant cap capable capacity capillaries capillary capital capitalists caps capsular capsule captain captains captivity capture captured carbolic carbon carbuncle carcinoma card cardiac cards care cared career careful carefully careless carelessly cares caressing caribbean caries carious carolina carolinas carotid carpenters carpet carpets carriage carriages carried carries carry carrying cart cartilage cartilages cartilaginous carts case caseation caseous cases cash cashier cashiers cashing cast casting castle casual casually cat catalog catch catching categories category catgut cathedral catherine catholic catholics catiche cattle caucus caught causation cause caused causes causing caustic cautery caution cautious cautiously cavalry cavernous cavities cavity cease ceased ceases cebu ceiling celebrated cell cellar cells cellular cellulitis censure cent center centered centers central centre cents centuries century ceremony certain certainly certainty cervical cession chain chains chair chairs chalk challenge challenged chamber champagne champion chance chances chancre change changed changes changing channel channels chap chapter character characterised characteristic characteristics characterized characters charcoal charcot charge charged charges charging charles charleston charm charming charred chart charter chartered charters chase chat cheap check checked checkout cheek cheeks cheered cheerful cheerfully chemical cher chere cherished cherry chest chestnut chicago chichagov chicken chief chiefly child childhood childish childlike children chill chimney chin china chinese chisel choice choked choking chondro chondroma chondromas choose choosing chose chosen christ christian christmas chronic church churches cicatricial cicatrix cigar circle circles circular circulating circulation circumscribed circumstances cirsoid cited cities citizen citizens citizenship city civil civilian civilians civilization civilized clad claim claimed claims clair clamor clark clash clasped class classes classification classify clatter clause clavichord clavicle clavicular clay clean cleanliness clear cleared clearer clearing clearly clearness clergy clergyman clerk cleveland clever clicked client climate climbed clinging clinical clinically cloak cloaks clock close closed closely closer closing clot cloth clothes clothing clots cloud clouds club clue clung clutched clutching coach coachman coagulation coal coarse coast coat coats coburg cocci cock cocked code codes coffee coffin coin coinage coincidence cold coldly coldness collapse collapsed collar collateral colleague colleagues collect collected collecting collection collective college colleges collision collodion colloid colon colonel colonial colonies colonists colonization colony color colorado colored colour coloured columbia column columns coman combat combination combinations combine combined come comes comet comfort comfortable comfortably comforted comforting comforts coming command commanded commander commanders commanding commands commence commencement commences comment commerce commercial commissariat commission commissioners commissions commit committed committee committees commodities commodore common commonest commonly commonplace commons commonwealth communicate communicated communicating communication communities community compact companies companion companions company comparative comparatively compare compared comparison compel compelled compensation competition complain complained complains complaint complete completed completely completing complex compliance compliant complicated complication complications comply composed composition composure compound comprehend comprehensible compressed compression compromise compulsory computer comrade comrades conceal concealed concealing conceive concentrated concentration conception concern concerned concerning concerns concessions conciliation conclude concluded conclusion conclusions conclusive condemn condemned condemning condition conditions conduct conducted conducting confederacy confederate confederates confederation confer conference conferences conferred confess confessed confession confidence confident confidential configure configured confine confined confirm confirmation confirmed conflict conflicting conflicts confronted confused confusion congenital congested congestion congratulate congregation congress congressional conjecture conjunction connect connected connecticut connecting connection connections connective conquer conquered conqueror conquest conscience conscious consciousness consent consequence consequences consequently conservation conservative conservatory consider considerable considerably consideration considerations considered considering considers consist consisted consistence consistent consisting consists consolation consolidated conspicuous conspiracy constant constantly constitute constituted constitutes constituting constitution constitutional constitutions constricting constructed construction consult consultation consulting contact contain contained containing contains contaminated contemplate contemporaries contemporary contempt contemptible contemptuous contemptuously contended content contented contents contest contests continent continental contingencies continual continually continue continued continues continuing continuity continuous continuously contour contract contracted contraction contracts contracture contradict contradiction contradictory contrary contrast contribute contributed contributions control controlled controversies controversy contused contusion contusions convalescence convenience convenient convention conventions conversation conversations conversing convert converted convey conveyed conviction convince convinced convincing convoy cook cool cooperation cooperative copied copies copious copper copse copy copying copyright cord cordial cordially cords cork corn corner corners corns cornwallis coroner coronet corporal corporation corporations corps corpses corpus corpuscles correct corrected correctly correspond correspondence corresponding corridor corrupt corruption cortex cossack cossacks cost costly costs costume cot cotton couch cough coughed could couldn council councils counsel count counted countenance counter counters countess counties counting countries country countrymen countryside county couple couples courage courier course courses court courtesy courtiers courts courtyard cousin cover covered covering covers coveted cowboy coworker crack cracked crackling craft crash crazy creak creaked creaking cream create created creates creating creation creature credit creditors crept crew cried cries crime crimes criminal criminals crimson crippled crisis critical criticism critics crop crops cross crossed crosses crossing crowd crowded crowding crowds crown crowned cruel cruelly cruelty crumpled crush crushed crushing crust cry crying cuba cuban cultivated cultivation culture cumberland cunning cup cupboard cure curiosity curious curled curling curls curly currency current currently curtain curve curved curving custom customary customer customize customs cut cutaneous cutting cylinders cyril cyst cystic cysts dactylitis dagger daily dakota dam damage damaged damages damp dance danced dancer dancing danger dangerous dangers daniel danilovna danube dare dared daring dark darkness darling darted dash dashboard dashboards dashed dashing data date dates daughter daughters david davis davout dawn day daylight days deacon deactivate deactivated dead deadly deaf deafening deal dealing dealt dear dearest death debate debates debilitated debt debts decade decades deceased deceive deceived december decent deception decide decided decidedly decision decisions decisive declaration declare declared declaring decline declined decorations decree decreed dedicated deduce deduced deductible deduction deed deeds deemed deep deeper deepest deeply defeat defeated defect defective defects defend defended defending defense defensive deference defiance define defined definite definitely definition deformans deformities deformity degeneration degree degrees deity dejected delaware delay delayed delegate delegates delete deleting deliberate deliberately delicacy delicate delicious delight delighted delightful delirious delirium deliver delivered deltoid demand demanded demanding demands demarcation democracy democrat democratic democrats demonstrated demonstration den denied denisov denounced dense denser deny departed department departmental departments departure depend depended dependence dependent depending depends deposit deposited deposits depressed depressing depression deprive deprived depriving depth depths deputation derive derived dermoids des descend descended descending descent describe described describing description desert deserted deserved design designed designs desirable desire desired desires desk despair despairing desperate desperately desperation despise despised despite dessalles desserts destination destined destiny destroy destroyed destroying destruction destructive detached detachment detachments detail detailed details detained detected detective determination determine determined determining develop developed developing development develops device devices devil devils devise devised devitalised devoid devote devoted devotion dew dewey diabetes diagnosed diagnosis diagnostic diam diamond diaphysis diary did didn die died dies diet dieu differ differed difference differences different differential differentiate differentiated differently differs difficult difficulties difficulty diffuse diffused digital dignified dignity dilatation dilate dilated dim dimensions diminish diminished diminishes diminishing diminution dimly dimmler dine dined dining dinner dinners dip diphtheria diplomacy diplomat diplomatic diplomatist diplomatists direct directed directing direction directions directly director directory dirt dirty disabilities disability disable disabled disagreeable disappear disappearance disappeared disappears disappointment disaster disastrous discharge discharged discipline disclaimer discoloration discoloured discomfort disconcerted discontent discount discounts discover discovered discovery discretion discrimination discuss discussed discussing discussion discussions disease diseased diseases disfigurement disgrace disgraceful disguise disgust dish dishes dishonorable disinfected disinfection disintegration disk dislike disliked dislocated dislocation dismay dismissed dismounted disorder disordered disorders dispatch dispatched disperse dispersed displaced displacement display displayed displaying displeased disposal dispose disposed disposition dispositions dispute disputed disputes disputing dissatisfaction dissatisfied dissection dissemination dissensions dissolution dissolved distal distance distant distended distension distinct distinction distinctly distinguish distinguished distorted distracted distress distressed distressing distribute distributed distributing distribution district districts disturb disturbance disturbances disturbed disturbing ditch diverse diversity diverted divide divided dividing divine division divisions dmitri dmitrich dmitrievna do doctor doctors doctrine doctrines document documentary documents does doesn dog dogs doing doings dokhturov dolgorukov doll dollar dollars dolokhov domain domestic dominance dominated domingo dominion dominions domo don donate donation donations done door doors doorway doran dorogomilov dorsal dorsum dose doses double doubled doubly doubt doubted doubtful doubtless doubts douglas down downcast downhill downstairs downward downwards dowry dozen dozens draft drafted drag dragged dragging dragoons drain drainage drained dram dramatic drank drastic draw drawer drawing drawn dread dreaded dreadful dreadfully dream dreamed dreams dred dress dressed dresses dressing dressings drew dried drift drink drinking drinks drissa drive driven driver drives driving dron dronushka drooping drop dropdown dropped dropping drops drove drown drowned drubetskaya drubetskoy drug drugs drummer drums drunk drunkard drunken dry drying dual duc duct ducts due duel dug duke dull duly duncan dunyasha duplicate duplicated duplicates duplicating duration during dusk dusky dust dusty dutch duties duty dwelt dying each eager eagerly eagle ear earlier earliest early earn earned earnest earnestly ears earth earthly ease easier easily east eastern easy eat eaten eating ebook ebooks economic economy ecstatic eczema edge edges edinburgh edit edited edition editions editor edmund educated education educational effect effected effective effects efficacious efficient effort efforts effusion egg eight eighteen eighteenth eighth eighty either ejaculated elapsed elastic elbow elbows elder elderly elders eldest elect elected election elections electoral electors electric electrical electricity electrolysis electronic electronically elegant element elements elephantiasis elevated elevation eleven elicited eligibility eligible elizabeth eloquent else elsewhere elson emaciated email emancipated emancipation embarrassed embarrassing embarrassment embassy embedded emboli embolic embolism embolus embrace embraced embracing embroidered emerged eminent emotion emotional emotions empereur emperor emperors emphasis empire employ employed employee employees employer employers employment empowered empress emptied empty empyema enable enabled enact enacted enactment encapsulated enchanting enclosed encounter encountered encourage encouraged encouraging end endeavoured ended ending endless endorsed endothelial endothelium endowed ends endure endured enemies enemy energetic energy enforce enforced enforcement engage engaged engagement engine engineer england english englishman engrossed enjoy enjoyed enjoying enjoyment enlarge enlarged enlargement enlisted enns enormous enormously enough enraptured enroll enrolled ensue ensued ensues ensure entangled enter entered entering enterprise enterprises enters entertain entertained entertaining enthusiasm enthusiastic entire entirely entitled entity entrance entreaty entrusted entry enumerate envelope enveloped envious envoy envy epidermis epiphyses epiphysial epiphysis episode epithelial epithelioma epithelium epoch equal equality equally equipment equipped equivalent era erase erect erected erie ermolov erosion erratic error errors eruption eruptions erysipelas erza esaul escape escaped escapes escaping escort especially essence essential essentially est establish established establishing establishment estate estates esteem estimate estimated etc eternal eternity europe european eusol evacuation evanescent eve even evening evenings event events eventually ever everted every everybody everyday everyone everything everywhere evidence evident evidently evil evils evoked evolution exact exactly exaggerated exalted examination examine examined examining example examples exceeded exceeding exceedingly excellency excellent except exception exceptional exceptions excess excessive exchange exchanged exchanging excise excised excising excision excited excitement exciting exclaimed exclamation exclude excluded excluding exclusion exclusive exclusively excuse execute executed executing execution executive exempt exemption exercise exercised exercises exerted exertion exhausted exhaustion exhibit exile exist existed existence existing exists exit exostoses exostosis expanded expansion expect expectation expectations expected expecting expedition expense expenses expensive experience experienced experiences experiencing experiment experiments expired explain explained explaining explains explanation explanations exploit exploits exploration exploring export expose exposed exposing exposure express expressed expresses expressing expression expressions expressly extend extended extending extends extension extensive extensor extensors extent external externally extra extraordinary extravasated extreme extremely extremities extremity exudate exudation eye eyebrows eyed eyelids eyes eyford face faced faces facial facilitate facilities facility facing fact faction factor factories factors factory facts faded fail failed failing fails failure faint fair fairly faith faithful faithfully fall fallen falling falls false falsehood fame familiar families family famous fancied fancies fancy fantastic far farewell farm farmer farmers farming farms farther farthest fascia fasciae fascinating fashion fashionable fashioned fast fastened faster fastest fat fatal fate fateful father fatherland fathers fatigue fatty fault faulty favor favorable favored favoring favorite favors favour favourable favoured favours fear feared fearing fears feather feature features february fed federal federalist federalists federation fedorovna fee feeble feebly feed feeding feel feeling feelings feels fees feet fell fellow fellows felt female feminine femoral femur fence ferapontov ferdinand fertile fetch fetched fete feudal fever feverish few fewer fi fibres fibrin fibrinous fibro fibroblasts fibroma fibromatosis fibrosa fibrositis fibrous fibula field fields fierce fiercely fifteen fifteenth fifth fifty fig fight fighting figs figure figures filaments file fili fill filled filling fills filter final finalize finally finance finances financial find finding finds fine finely finest finger fingers finish finished finishing fire fired fires firing firm firmly firmness first fish fishing fiske fists fistula fit fits fitted fitting five fix fixed fixedly fixing flag flame flames flank flap flared flash flashed flat flattered flattering fleches fled flee fleeing fleet flesh flew flexed flexion flexor flight floating flood floor flora florida flour flourish flourished flourishing flow flowed flower flowers flowing fluctuating fluctuation fluid fluids flung flush flushed flushing fly flying foci focus foe foes fog fold folded folds folk folks follicles follow followed followers following follows folly fomentations fond food fool foolish fools foot footer footing footman footmen footsteps for forbade forbid forbidden forbidding force forced forceps forces forcible forcibly forearm forehead foreign foreigner foreigners foremost foresaw foresee foreseen foresight forest forests forever forfeit forge forget forgetting forgive forgiven forgiveness forgot forgotten form formal format formation formed former formerly formidable forming forms fort forth forthcoming fortified fortnight fortunate fortunately fortune fortunes forty forward forwards fought foul found foundation foundations founded four fourteen fourteenth fourth fourths fox fracture fractured fractures fragment fragments frame framed framework framing france francis francisco frank franklin frankly frankness fraud free freed freedmen freedom freehold freeholders freely freemasonry freemasons freight french frenchman frenchmen frenchwoman frequency frequent frequently fresh freshly freshness friction friday fried friend friendly friends friendship fries frieze fright frighten frightened fringes fro frock from front frontal frontier frontiers frost frown frowned frowning frozen fruit fruits fugitive fugitives fulfill fulfilled fulfillment full fuller fully fun function functional functions fund fundamental funding funds funeral fungating funny fur furious furnish furnished furniture furs further fury fusiform fuss futile future gaiety gaily gain gained gaining gains gallant gallery gallop galloped galloping game gang ganglia ganglion gangrene gangrenous gap garden gardens garfield garlic garments garrison gas gasped gate gates gateway gather gathered gathering gauze gave gay gaze gazed gazing gcash geese gems general generalised generally generals generation generations generosity generous genitals genius gentle gentleman gentlemen gently gentry genuine geographical george georgia gerasim german germans germany gesture get gets getting giant gift gigantic girl girls girth give given gives giving glad gladly glance glanced glances glancing gland glanders glands glandular glass glasses gleam gleamed glimpse glitter glittered glittering globe gloom gloomily gloomy glorious glory glove gloves glow glowing gluteal glycerin go goal god goes going gold golden gone gonorrhoea gonorrhoeal good goodness goods goose gorki gospel gossip got gout gouty govern governed governess governesses governing government governments governor governors gown grabern grace graceful gracious graciously grade gradual gradually graft grafting grafts grain grains grand grandeur grandfather grant granted granting grants granulating granulation granulations grapeshot grasp grasped grasping grass grateful gratefully grating gratitude grave gravely gravity gray great greatcoat greatcoats greater greatest greatly greatness greeley green greenbacks greenish greet greeted greeting greetings grenville grew grey greyish grid grief grievances grieved grim grimace grip grizzled groan groaned groans groin groom groove gross ground grounds group groups grow growing grown grows growth growths grudge guarantee guard guards guerrilla guess guessed guessing guest guests guidance guide guided guilt guilty guitar gulf gumma gummata gummatous gun gunpowder guns gut gutenberg gypsy habit habits habitual had hadn haematoma haemophilia haemorrhage haemorrhages hair haired hairs hairy half halfway hall halo halt halted halting hamilton hampshire hand handed handful handing handkerchief handle handled handles handling hands handsome hang hanged hanging happen happened happening happens happier happily happiness happy harbor hard hardened harder harding hardly hare harm harmful harmony harness harnessed harriet harrison harsh hart hartford harvard harvest has hasn haste hasten hastened hastening hastily hat hate hated hatherley hatred hats have haven having hawaii haworth hay hayes head headache headed header heading headlong headquarters heads heal healed healing heals health healthy heap hear heard hearing hears heart heartily hearts hearty heat heated heaven heavens heavier heavily heavy heed heel heels height heights heir heiress held helene help helped helper helping helpless hemp hence hendrikhovna henry her herd here hereditary hernia hero heroes heroic heroism hers herself hesitated hesitating hesitation hey hid hidden hide hideous hiding high higher highest highly highness highroad highways hill hills him himself hind hinder hindered hindrance hint hinted hints hip hippolyte hired his historian historians historic historical histories history hit hitherto hive hoarse hold holder holders holding hole holiday holland hollow holmes holy home homes homestead homesteads honest honey honor honorable honored honors honour hood hoofs hope hoped hopeless hopelessly hopes hoping horace horizon horn horner horns horrible horrid horrified horror horrors horse horseback horseflesh horsemen horses horsham hosmer hospital hospitals host hostess hostile hostility hot hotel hounds hour hourly hours house household housemaid houses houston how however http huddled hudson hue huge hum human humanity humble humerus humiliating humiliation humor humored hundred hundreds hung hungary hunger hungry hunt hunter hunters hunting huntsman huntsmen hurrah hurried hurriedly hurry hurrying hurt husband husbands hussar hussars hut hutchinson hyaline hydatid hydraulic hydrogen hydrops hygroma hyperaemia hyperostosis hypertrophied hypodermic hysterical i ice ichthyol icon icons idea ideal ideals ideas identical identify identities identity idiot idle idleness if ignorance ignorant iii ilagin iliac ill illegal illegitimate illinois illness illustrate illustrated illustration ilya ilyin image imagination imagine imagined imagining immediate immediately immense immigrants immigration immunity impaction impaired impairment impatience impatient impatiently impeachment impending imperfect imperfectly imperial imperialism impetus implicate implicated implication implied implies imploring imply import importance important importation imported imports imposed imposing impossibility impossible impracticable impress impressed impression impressions imprisoned imprisonment improper improve improved improvement improvements improving impulse impulses in inability inactive inaugurated inauguration incapable incessant incessantly inch inches incident incidental incidents incised incision incisions inclination incline inclined include included includes including incoherent income incomes incoming incomplete incomprehensible inconvenience incorporated incorrect increase increased increases increasing incredible incubation incurred indecision indeed indefinite indefinitely indentured independence independent independently index india indian indiana indians indicate indicated indicates indicating indication indications indies indifference indifferent indirect indirectly indispensable individual individuals indolent induce induced inducing induction indulgence indurated induration industrial industries industrious industry inevitability inevitable inevitably infamous infant infantry infants infect infected infection infections infective inferior infiltration infinite infinitely inflamed inflammation inflammations inflammatory inflicted influence influenced influences inform information informed informing infrequently ingenious inguinal inhabitants inherent inheritance inherited initial initiated initiative injected injection injections injunction injured injuries injurious injury injustice ink inn inner innocence innocent innominate innumerable inoculation input inquire inquired inquiries inquiring inquiringly inquiry insane insensitive inserted insertion inside insidious insignificance insignificant insist insisted insolent insoluble inspect inspection inspector inspiration inspired instance instances instant instantly instead instinct instinctively instituted institution institutions instructed instruction instructions instructive instrument instruments insufficient insult insulted insurrection intact integrate integrity integument intellect intellectual intelligence intelligent intended intending intense intensity intent intention intentions intently intercourse interest interested interesting interests interfere interfered interference interferes interfering interior intermediate internal international interpretation interpreter interrupt interrupted interrupting interstate interstitial interval intervals intervening intervention interview intestinal intestine intima intimacy intimate intimately into intolerable intoxication intra intrigue intrigues introduce introduced introducing introduction invade invaded invading invalid invariably invasion invent invented invention inventory invested investigation invisible invitation invite invited inviting invoice involuntarily involuntary involve involved involvement involves involving iodide iodine iodoform iogel iowa ireland irene irish iritis iron ironic ironical ironically irony irregular irregularly irrepressible irresistible irresistibly irrigation irritability irritable irritant irritated irritating irritation is island islands isn isnt isolated issue issued issues issuing it italian italy item items its itself ivan ivanovich ivanovna ivanych ivory jabez jacket jackson jacksonian jail james jamestown january japan japanese jaw jaws jay jealous jealousies jealousy jefferson jeffersonian jerked jersey jest jesting jesus jewel jews jingling job john johnson join joined joining joint joints joke jokes joking jolted jones joseph journey joy joyful joyfully joyous joys judge judged judges judging judgment judicial judiciary jugular julie july jump jumped jumping junction junctions june jurisdiction jurisprudence jury just justice justification justified justify kaluga kansas karagina karagins karataev karay karl karp kaysarov keen keenly keep keeper keeping keeps keloid kentucky kept kerchief key keys kidney kidneys kiev kill killed killing kind kindled kindly kindness kinds king kingdom kings kiss kissed kissing kitchen klapp knee knees knelt knew knife knights knit knitting knock knocked knoll knot know knowing knowledge known knows kochubey kolocha konovnitsyn kozlovski krasnoe kremlin krems kuragin kutuzov kuzmich kuzminichna labor labored laborers labors labour lace lacerated laceration lack lacked lacking lad laden ladies lads lady laid lake lakes laminated lamp land landbank landed landing landlord landowner lands lane langeron language lantern lap large largely larger largest larynx lascar last lasted lasting lastly lasts late lately latent later lateral laterally latest lathe latin latter latterly laugh laughed laughing laughter launched laundry lavrushka law lawful lawn laws lawyer lawyers lay layer layers laying layout layouts lazarev lead leader leaders leadership leading leads league lean leaned leaning leaped leaps learn learned learning leash least leather leave leaves leaving led lee left leg legal legally legged legislation legislative legislature legislatures legitimate legs leisure leisurely lend length lens lent les lesion lesions less lesser lesson lessons lest lestrade let letter letters letting leucocytes leucocytosis level liability liable liberal liberated liberties liberty library license lid lie lies lieutenant life lifeless lift lifted lifting ligament ligaments ligation ligature ligatures light lighted lighter lighting lightly lightning lights like liked likely likewise liking limb limbs lime limit limitation limitations limited limits lincoln line lined linen lines lining link linked links lint lip lipoma lips liquefaction liquid liquor lise list listen listened listening listless lists lit literary literature little live lived livelihood lively liver lives livid living lloyd load loaded loan loans local localised locality locally locate located lock locked locking locomotive lodge lodged lodges lodgings lofty log logic logical login logo logs london lone lonely long longed longer longus look looked looking looks loops loose loosely looting lord lords lorrain lose loses losing loss losses lost lot lotion loud louder loudly louis louisiana love loved lovely lover lovers loves loving low lowell lower lowered lowering lowest loyal loyalists loyalty luck lucky lucrative lumber lumen luminous lump lunch lungs lupus lying lymph lymphadenitis lymphadenoma lymphangioma lymphangitis lymphatic lymphatics lympho macdonald macewen machine machinery mack mad madam madame made mademoiselle madison magic magistrate magnanimity magnanimous magnificent magnitski magnitude maid maiden maids mail main maine mainly maintain maintained maintaining maintenance majestic majesty major majority makar make makers makes making male males malignancy malignant malleolus mamma man manage managed management manager mandible mane maneuvers manhood manifest manifestation manifestations manifesto manifests manila mankind manly manner manners manual manufacture manufacturers manufactures manufacturing many map marauders marble march marched marches marching margin margins maria marie marine mark marked market markets marks marriage married marrow marry marrying marshal marshall marshals martial mary marya maryland masculine mask mason masonic masons mass massachusetts massacre massage masses massive master masterly masters mastoid match material materially materials mathematics matrix matter matters maturity mavra maximum may mayor mazurka mccarthy mckinley mcmaster me meadow meal meals mean meaning meaningless means meant meantime meanwhile measure measured measures meat mechanical mechanically mechanics mechanism medial median medical medicine medium medulla medullary meekly meet meeting meetings melancholy melanotic melted melting member members membrane membranes memorable memorandum memories memory men menace menacing meningitis mental mentally mention mentioned mentioning menu merchant merchants mercury mercy mere merely merged merit merits merrily merry merryweather mess message messages messenger met metacarpal metal metallic metastases metastasis method methods metivier mexican mexico michael michaud michigan micro midday middle midnight midst might mighty migration mikhaylovna mild milder mile miles military militia militiamen milk milka mill millimeter million millions mills miloradovich mind minded mindedly mindedness minds mine mineral miners mines mingled mingling minimum mining minister ministers ministry minnesota minor minority minute minutely minutes mirror mirrors miserable misery misfortune misfortunes miss missed missing mission missionaries mississippi missouri mist mistake mistaken mistakes mistress misty mitenka mixed mixture mm moan moaning mob mobile mobility mode model moderate moderation modern modest modification modified modify moist moisture molasses mole moles moment momentary moments momentum mon monarch monarchs monarchy monastery monday money monopolies monopoly monotonous monroe monsieur monster montana month months mood moon moonlight moore moral morally moran morbid more morel moreover mormons morning morose morphin morris morrow mortal mortemart moscow most mostly mother mothers motion motionless motive motives motor motorbike mount mountain mountains mounted mounting mournful mouth mouths movable move moved movement movements moves moving mozhaysk mrs much mucous mud muddy multiple mummers municipal murat murder murdered murderer murmur murmured muscle muscles muscular museum music musical musket musketry muskets must mustache mustaches mustn muttered muttering mutton mutual my myeloma myositis myself mysteries mysterious mystery mytishchi myxoma naevi naevus nail nails naive naked name named namely names napkin naples napoleon napoleonic narrative narrow narrowing nasal nasty natalie natasha nation national nationalism nationalities nationality nations native natives natural naturally nature natured naval navigation navy near nearer nearest nearly nearness neatly nebraska necessarily necessary necessity neck necrosis need needed needle needles needs negative neglect neglected negligence negotiate negotiation negotiations negro negroes neighbor neighborhood neighboring neighbors neighbourhood neighbouring neither nephew nerve nerves nervous nesvitski net network neuralgia neuritis neuro neuroma neutral neutrality nevada never nevertheless neville new newcomer newly news newspaper newspapers next ney nice nicely nicholas niece niemen night nightcap nightly nights nikolenka nine nineteenth ninth nobility noble nobleman nobles nobody nodded nodding nodes nodular nodule nodules noise noiselessly noisy nominated nominating nomination non noncash noncommissioned none nonsense nor normal normally north northern northwest nose nosed not notably note notebook noted notes nothing notice noticeable noticed notices noticing notification notifications noting notion notwithstanding nourished nourishment novel novelty november now nowadays nowhere null nullification number numbers numerous nurse nursery nurses nursing nut nutrition oak oath oats obedience obey obeyed object objected objections objects obligation obligations obliged obliterated obliteration obscure observation observations observe observed observer observing obstacle obstinate obstructed obstruction obtain obtained obtaining obvious obviously occasion occasional occasionally occasions occluded occlusion occupancy occupation occupations occupied occupy occupying occur occurred occurrence occurring occurs ocean october odd odontoma odour oedema oedematous of off offended offenders offense offensive offer offered offering offers office officer officers offices official officially officials offset often ogg ohio oil ointment oklahoma old oldenburg older olmutz ominous omitted on onboard once one ones oneself online only onset onto onychia ooh oozing open opened opening openings openly opens openshaw opera operate operating operation operations operative operator opinion opinions opium opponent opponents opportunities opportunity oppose opposed opposing opposite opposition oppressed oppression option options orange orator orators orbit orchestra order ordered ordering orderlies orderly orders ordinance ordinary oregon orel org organ organic organised organism organisms organization organizations organized organizing organs oriental orifice origin original originally originate originated originates originating orleans orlov orthodox osseous ossification ossifying osteo osteoma osteomalacia osteomyelitis ostitis other others otherwise otis otradnoe ought ounce our ours ourselves out outbreak outburst outcome outer outlet outline outlook outlying outposts output outright outset outside outstanding outstretched outward oval ovary over overcoat overcome overflowing overgrowth overland overlooked overlying overpayment overtake overthrow overthrown overtook overwhelmed owe owed owing own owned owner owners ownership owns oxford oxygen pace paced paces pacific pacing pack packed packet packing pad page pages paget paid pain paine painful painfully painless pains paint painted pair palace palate pale pallor palm palmar palpable pamphlets panama panic panting papa paper papers papilloma papules parade paraffin paragraph paragraphs parallel paralysed paralysis pardon parent parents paris park parliament parliamentary parotid part parted partial partially participation particles particular particularly particulars parties partisan partly partner parts party pas pass passage passages passed passengers passes passing passion passionate passionately passions passive password past paste patch patches patella path pathetic pathogenic pathological paths patience patient patients patrick patriot patriotic patriotism patriots patronage patted paul paulucci pause paused pausing pavement pavlograd pavlograds pavlovna paxson pay paying payment payments pdf pea peace peaceful pearls peasant peasants pectoral peculiar peculiarities peculiarity peculiarly pedunculated peering pelageya pelvis pen penalties pencil penetrate penetrated penetrating penis penn pennsylvania pensions people peoples per perceive percent percentage perceptible perception perfect perfection perfectly perforated perforating perform performance performed performing perhaps peri period periods periosteal periosteum peripheral periphery perish perished perishing peritoneal peritoneum permanent permanently permeated permission permissions permit permitted peroneal peronskaya peroxide perpetual perplexed perplexing perplexity persian persist persistence persistent persists person personage personages personal personality personally personnel persons perspiration perspiring persuade persuaded perturbed pesos pet peter petersburg peterson petition petitions petty petya pfuel pglaf phagocytes phalanges phalanx pharynx phase phases phenomena phenomenon philadelphia philippine philippines philosophy phlebitis photograph phrase phrases physical physically physiological pick picked picket picking picture pictured pictures piece pieces pierce pierced piercing pierre pig pigment pigmentation pigmented pile pilgrim pilgrims pillow pillows pin pinch pine pink pioneer pioneers pipe pipes pips pistol pistols pit pitch pitched piteous piti pitied pitiful pitt pittsburgh pity place placed places placing plain plainly plains plan planks planned planning plans plant plantation plantations planted planter planters planting plants plaster plate plates platform platforms platon platov platt play played playing plays plea pleasant pleasantly please pleased pleasing pleasure pleasures pledge plenty pleura plexus plight plot plow plumes plump plunder plunged plymouth pneumonia pocket pockets poetic poetry point pointed pointing points poison poisoning poland pole poles police policeman policies policy polish polished polite politely politeness political politician politicians politics polk polled polls pond pondered pool poolside poor pope popliteal popular popularity popularly population populists porch porous porridge port porter portfolio portion portions porto portrait ports pos pose position positioning positions positive positively possess possessed possesses possession possessions possessor possibility possible possibly post posted posterior posterity posting postmaster posts potassium potato potatoes pouches pounds pour poured pouring poverty powder powdered power powerful powerless powers practical practically practice practised praise praised pratzen pray prayed prayer prayers pre preached precaution precautions preceded preceding precious precipitated precise precisely precision predestined predominate prefer preferably preference preferred pregnant preliminary premises preobrazhensk preoccupied preparation preparations prepare prepared preparing prepatellar prepuce prescribed presence present presented presenting presently presents preservation preserve preserved presidency president presidential presidents press pressed pressing pressure prestige presume pretended pretending pretext pretty prevail prevailed prevent prevented preventing prevention prevents preview previous previously prey price prices pricing pride priest priests primary prime prince princes princess princesses principal principally principle principles print printed printer printing prison prisoner prisoners private privilege privileges prize probability probable probably probe problem problems procedure proceed proceeded proceeding proceedings process processes proclaimed proclamation produce produced produces producing product production products profession professional profile profit profits profound profoundly profuse prognosis program progress progressive prohibited prohibition project projected projecting projects proliferation prolonged prominence prominent promise promised promises promo promote promoted promoting promotion promotional prompt promptly prone pronounced proof proofs proper properly property prophecy proportion proportions proposal proposals propose proposed proposition proprietary proprietor proprietors prosecution prospect prosperity prosperous protect protected protecting protection protective protest protested protests protopathic protoplasm proud prove proved proves provide provided providence providing province provinces provincial proving provision provisions proximal proximity prussia prussian pseudo psoas public publican publish published puckered puckering puff puffing pull pulled pulling pulsating pulsation pulse puncture punctured punish punished punishment pupil pupils purchase purchased pure purely purification purified puritan puritans purity purple purpose purposely purposes purse pursue pursued pursuing pursuit purulent pus push pushed pushing pustule pustules put putting puzzled pwd pyaemia pyogenic qualification qualifications qualified qualifies qualities quality quantities quantity quarrel quarreled quarrels quarter quartered quartermaster quarters que quebec queen queer quest question questioned questioning questions quick quickbooks quicker quickly quiet quietly quilt quincy quit quite quivered quivering r race radial radiant radical radicals radiogram radium radius raevski rage ragged rail railroad railway railways rain raise raised raising ramballe ran rang range ranges rank ranks rapid rapidity rapidly rapp rapture rapturous rapturously rare rarely rat rate rates rather ratification ratified ratio rattle rattled raw ray rays re reach reached reaches reaching reaction reactionary reactivate read readable reader readers readily readiness reading ready real reality realize realized realizing really realm rear rearguard rearrange reason reasonable reasoning reasons reassure rebellion recall recalled recalling receipt receipts receive received receives receiving recent recently reception receptionist recipe reckless reckoned reckoning reclamation recognise recognised recognition recognize recognized recognizing recollection recommended recommends reconstruction record recorded recording records recourse recover recovered recovering recovery recruits rectum recur recurrence recurrent red reddish redness redoubt reduce reduced reduction reenable reference references referendum referred referring refined reflect reflected reflection reflections reform reformers reforms refrain refrained refuge refund refunded refunder refusal refuse refused refuses refusing regain regard regarded regarding regardless regards regeneration regime regiment regimental regiments region regions register registered registration regret regretted regular regulars regulate regulating regulation regulations reign rein reinforcements reins reject rejected rejects rejoice rejoicing rejoined relapse relapsing relate related relating relation relations relative relatively relatives relaxed release released relentless reliable reliance relief relieve relieved religion religious reluctant reluctantly rely remain remainder remained remaining remains remark remarkable remarkably remarked remarks remedies remedy remember remembered remembering reminded remit remorse remote removal remove removed removing rename render rendered rendering renew renewal renewed renounce renovation rent rental rented rep repair reparative repay repeal repealed repeat repeated repeatedly repeating repetition replace replaced replacement replied replies reply replying report reported reporting reports represent representation representative representatives represented representing reprint reproach reproached reproachfully republic republican republicans repulsed reputation request requests require required requirements requires requiring requisite rescue research resected resection resemblance resemble resembles resembling resented resentment reservations reserve reserved reserves resetting residence resignation resigned resist resistance resolute resolutely resolution resolutions resolve resolved resort resortos resounded resource resources respect respectable respected respectful respectfully respecting respective respectively respects respiration responded response responsibility responsible rest restaurant rested resting restless restlessness restoration restore restored restoring restrain restrained restraint restricted restriction restrictions rests result resultant resulted resulting results resume resumed resumption retain retained retention retire retired retirement retiring retreat retreated retreating return returned returning returns reveal revealed revenue reverse review revision revoir revoke revolt revolution revolutionary revolutions reward rewards rhetor rheumatic rheumatism rhine rhode rhodes ribbon ribbons ribs rice rich richer riches richest rickets rickety rico rid ridden ride rider ridicule ridiculous riding rifle right rights rigid rigidity rigor ring ringing rings riot rise risen rises rising risk risks rival rivals river rivers riverside road roads roar robbery robert rod rode rodent role roles roll rolled rolling romance romantic rome rontgen roof roofs room rooms roosevelt root roots rope ropes rose ross roster rostopchin rostov rostova rostovs rosy rough round rounded roused route routes routine row rows royal royalty roylott rubbed rubber rubbing rubbish ruble rubles rucastle rude rug ruin ruined ruinous ruins rule ruled ruler rulers rules ruling rum rumor rumors run running runs rupture ruptured rural rush rushed rushing russia russian russians rustle ryazan ryder rye s saber sabers sac sacculated sacred sacrifice sacrificed sacrifices sad saddle saddled saddles sadly sadness safe safeguard safely safety said sailing sailors saint sake salary sale sales salesman saline sallow salt salts salvation same samovar samuel san sand sang sank santa santo saphena sapraemia sarcastic sarcoma sat satin satisfaction satisfactory satisfied satisfy saturday sausage savage savannah save saved saving saviour saw say saying says sc scab scale scalp scandal scanty scapula scar scarcely scared scarf scarlet scars scattered scene scenes scent schedule scheduled scheme schemes schon school schools schoss sciatic science sciences scientific scissors sclerosis score scotch scotland scott scoundrel scraped scraping scratch scream screamed screams screen screw screwed screwing scrotum scurvy sea seaboard seal sealed search searched searching seas season seasonal seat seated seating seats sebaceous secession second secondary secondly seconds secrecy secret secretary secreting secretion secretly secrets section sectional sections secure secured securing security sedition see seed seeing seek seeking seem seemed seems seen sees segment seize seized seizing seizure seldom select selected selecting selection self sell selling semenovsk semi senate senator senators send sending senile senior sensation sense senseless senses sensibility sensible sensitive sent sentence sentiment sentiments sentinel separate separated separately separates separating separation sepsis september septic septicaemia sequel sequence sequestrum serene serf serfs sergeant sergey series serious seriously serous serum servant servants serve served serves service services serving servitude session set sets setting settings settle settled settlement settlements settlers settling setup seven seventeen seventeenth seventh seventy several severe severed severely severity seward sex shade shadow shadows shaft shafts shaggy shake shaken shaking shall shallow shame shameful shamshevo shan shape shaped share shared sharing sharp sharply sharpshooters shattered shaved shaven shawl she sheath sheaths shed sheep sheet shell shells shelter sherlock sherman shevardino shifting shining shinshin ship shippers shipping ships shirt shivering shock shoe shoes shone shook shoot shooting shop shops shore short shortening shorter shortly shot shots should shoulder shoulders shouldn shout shouted shouting shouts show showed showing shown shows shrank shrewd shrieked shrill shriveled shrugged shrugging shudder shuddered shut shutters shuttle shy shyly sick sickness side sides sideways sigh sighed sighing sight sighted sign signal signed significance significant significantly signs silence silent silently silk sill silly silver similar similarly simon simple simpler simplest simplicity simply simulate simultaneously sin since sincere sincerely sing singers singing single singly singular sinister sink sinking sins sinus sinuses sir sire sister sisters sit site sitting situated situation situations six sixteen sixteenth sixth sixty size skeleton skiagram skiagrams skill skilled skillful skin skirt skull sky slammed slave slavery slaves sleep sleeping sleepless sleeps sleepy sleeve sleeves sleigh sleighs slender slept slight slightest slightly slim slip slipped slippers slipping slips slope slough sloughing sloughs slow slowly sly small smaller smallest smart smashed smeared smell smile smiled smiles smiling smilingly smith smoke smoked smoking smolensk smooth smoothed smoothly snake snatched snow snuff snuffbox soaked sob sobbed sobbing sobs social socialists societies society soda sodden sofa soft soften softened softening softer softly soil sold soldier soldiers sole solely solemn solemnity solemnly solid solitary solitude solution solve solved some somebody somehow someone something sometimes somewhat somewhere son song songs sons sonya soon sooner soothing sore sores sorrow sorry sort sorts sought soul souls sound sounded sounds soup source sources south southern southwest sovereign sovereigns sovereignty space spaces spain spanish spare spared sparkling sparks spasm spasms speak speaker speaking speaks special specially specie species specific specimen spectacle spectacles speech speeches speed speedily spend spending spent speranski sphere spinal spindle spine spinning spirit spirited spirits spiritual spirochaete spite splashing spleen splendid splendidly splint splints split spoil spoiled spoils spoke spoken spongy spontaneous spoon spores spot spots spotted sprain sprang spread spreading spreads spring springing springs sprung spurs spy squadron square squeezed stable staff stage stages staggered staggering stain stained stair staircase stairs stake stalls stamp stand standard standards standing stands staphylococcus staples star stared staring stark stars start started starting startled startling starvation state stated statehood statement states statesman statesmen station stationary stationed stations status statuses statutory stay stayed staying steadily steady stealing steam steel steep step stepfather stepped stepper stepping steps sterilised stern sternly sterno sternum steward stick sticking stiff stiffness still stillness stimulated stimulating stimulus stir stirred stirring stitch stitches stock stockings stocks stoke stolen stomach stone stoner stones stood stooped stooping stop stopped stopping store stores stories storm story stout straight strain strained straining strains strange strangely stranger strangers strategic strategy straw stream streamed streams street streets strength strengthen strengthened streptococci streptococcus stress stretch stretched stretcher stretchers stretching stricken strict strictly strike strikes striking string strip stripped strips strode stroke strong stronger strongest strongly struck structural structure structures struggle struggled struggling strychnin stubborn stuck student studied studies study studying stuff stumbled stump stupid stupidity sturdy style sub subclavian subcutaneous subdued subjacent subject subjected subjects submarine submission submissive submit submitted submitting subordinate subsequent subsequently subside subsided subsides substance substances substitute substituted subtle succeed succeeded success successes successful successfully succession successive successor succumb such suction sudden suddenly suffer suffered suffering sufferings suffers sufficient sufficiently suffrage sugar suggest suggested suggesting suggestion suggestive suggests suicide suit suitable suite suited sum summary summer summoned summons sums sun sunday sunk sunken sunlight sunshine superadded superficial superfluous superintendent superior superiority supervision supper supplemented supplied supplies supply supplying support supported supporters supporting suppose supposed supposing suppress suppressed suppuration suppurative supra supremacy supreme sure surely surface surfaces surgeon surgeons surgery surgical surplus surprise surprised surprising surrender surrendered surround surrounded surrounding surroundings survey survive suspect suspected suspend suspended suspicion suspicious sustain sustained sutherland suture sutured sutures suvorov swallow swallowed sway swayed swaying swear sweat sweating sweep sweeping sweet swelling swellings swept swift swiftly swing swinging switch swollen sword swords swung symmetrical sympathetic sympathies sympathy symptom symptoms syncope synovial synovitis syphilis syphilitic syringe system systematic systems t table tables tact taft tail take taken takes taking tale talent tales talk talked talking talks tall tap tapped tapping tariff tariffs tartar tarutino task taste tattered taught tavern tax taxation taxes taylor tea teach teacher teachers teaching team teammate tear tearing tears technical teeth tell telling tells telyanin temper temperature template temple temples temporarily temporary temptation ten tend tendencies tendency tender tendered tenderly tenderness tendon tendons tends tennessee teno tens tense tension tent tenth tenure term termed terminal terminate terminated termination terms terrible terribly terrified territorial territories territory terror tertiary test tested tetanic tetanus texas text textile than thank thanked thanks that the theater thee their theirs them themselves then thence theodore theories theory there thereby therefore thereof thermal these they thick thickened thickening thickness thief thiers thigh thin thing things think thinking thinks thinner third thirds thirst thirteen thirteenth thirty this thomas thoracic thorax thorough thoroughly those thou though thought thoughtful thoughtfully thoughts thousand thousands thread threat threaten threatened threatening threateningly three threshold threw thrill throat thrombosis thrombus throne throng through throughout throw throwing thrown thrust thud thumb thus thy thyreoid tibia tibial ticket tickets tide tie tied ties tight tightly tikhon tiles till tilled tilsit timber time times timid timidly timokhin tin tingling tint tiny tips tipsy tiptoe tired tissue tissues title to tobacco today toe toes together toil token told toleration toll toller tolly tolstoy tomorrow tone tones tongue tonight too took tools tooth top topic topics tore tories tormented tormenting torn tortuous tortured tossed total touch touched touching tour tourniquet tout toward towards towels town towns townshend toxaemia toxic toxin toxins trace traced traces track tracks trade trademark traders trades tradesmen trading tradition traditions traffic trail trails train trained training trains traitor traitors tramp trampled tranquil tranquillity transaction transactions transfer transference transferred transformation transformed transition transmit transmitted transparent transplantation transport transportation transverse trap trauma traumatic travel traveled traveler travelers traveling treachery tread treason treasure treasury treat treated treaties treating treatment treaty tree trees trembled trembling tremendous trench trial tribute trick tried trifle trifles trifling trip triumph triumphant trivial trodden troops trophic tropical trot trouble troubled troubles troublesome trousers troyka truce true truly trunk trunks trust trusted trustees trusts truth try trying tsar tsarevich tube tubercle tuberculosis tuberculous tubes tucked tumour tumours tune tunica turkey turkish turmoil turn turned turner turning turns tushin tut tutor twelfth twelve twentieth twenty twice twist twisted twisting twitched twitching two tyler type typed types typhoid typical ugly uhlans ulcer ulcerate ulcerated ulceration ulcers ulm ulnar ultimate ultimately unable unanimous unarchive unavailable unavoidable unbroken unbuttoned uncertain uncertainty unchanged uncle uncomfortable uncommon unconscious unconsciously unconstitutional uncovered undecided under undergo undergoes undergoing underlying understand understanding understood undertake undertaken undertaking underwood undisable undisturbed undo undoubted undoubtedly undressed undressing unduly uneasily uneasiness uneasy uneven unexpected unexpectedly unfair unfamiliar unfortunate unfortunately unhappy unhealthy uniform uniforms unimportant union unions unique unit unite united uniting units unity universal universe university unjust unknown unlawful unless unlike unnatural unnaturally unnecessary unnoticed unpaid unpleasant unpleasantly unread unreasonable unsatisfactory unseen unsettled unsure until unusual unusually unwilling unworthy up update updates updating upload upon upper uprising upset upstairs upward upwards urge urged urgent urging urine usage use used useful useless user users using usual usually utah uterine uterus utilities utility utmost utter uttered uttering utterly vacancies vacancy vacant vaccine vaccines vague vaguely vain vainly valet valid validation valley valleys valuable value valued valves van vanguard vanished vanity vanquished variable variations varicose varied varies varieties variety various varix vary varying vascular vasili vasilich vaska vast vat vehicle vehicles veil veiled vein veins velvet venereal venezuela venous vent ventilator venture ventured vera verdict vereshchagin verify vermont verses version vertebrae vertebral very vessel vessels vested vestibule vexation vexed via vice vicinity vicious vicomte victim victories victorious victory vienna view viewed views vigor vigorous vigorously vii viii vile village villages villain vilna vincent violation violence violent violently virgin virginia virtue virtues virtuous virulence virulent virus viscera visible vision visit visited visiting visitor visitors visits vital vitality vive vivid vividly vladimirovich vodka voice voices void voided vol volkonski vols volume voluntary volunteers vomiting von voronezh vote voted voters votes vous voyage vs vyazma wage waged wages wagon wagons waist waistcoat wait waited waiter waiters waiting waitress wake waking walk walked walking walks wall walls wander wandered wandering want wanted wanting wants war ward warfare warlike warm warmly warmth warn warned warning warrant warranties warrior wars warts was wash washed washing washington wasn waste wasted wasting watch watched watching water waters watery watson wattle wave waved waves waving wax way ways we weak weakened weaker weakness wealth wealthy weapon weapons wear weariness wearing weary weather web webster wedding wednesday week weeks weep weeping weighed weight weird welcome welcomed welfare well wens went wept were west western westward wet weyrother what whatever wheat wheel wheels when whence whenever where whereas wherever whether which whig whigs while whip whiskers whisky whisper whispered whispering whispers whistle whistled whistling white whites whitlow whitney who whoever whole wholly whom whose why wi wicked wide widely wider widespread widow wife wild wilderness will willarski william willing wills wilson win winchester wind windibank winding window windows wine wing wings wink winking winning winter wiped wiping wire wisconsin wisdom wise wish wished wishes wishing wit with withdraw withdrawal withdrawing withdrawn withdrew within without witness witnessed witty wives woke wolf wolves wolzogen woman women won wonder wondered wonderful wondering wont wood wooden woodrow woods wool woolen word words wore work worked worker workers workflow working workingmen workmen works workspace world worldly worn worried worry worse worst worth worthless worthy would wouldn wound wounded wounds wrapped wrath wretched wrinkled wrinkles wrist writ write writer writers writes writing writings writs written wrong wrongly wrote wrung www wyoming xii xiii xiv xix xvi xvii xviii xxi xxii yakov yard yards yaroslavl year years yellow yes yesterday yet yield yielded yielding yields york you young younger youngest your yours yourself yourselves youth youthful zeal zealous zherkov znaim zone'.split(' '));
+    for (const word of ['departing','checkout','checking','checked','visitors','someone','somebody','settling']) smartTypoKnownEnglish.add(word);
+    const smartTypoDomainWords = [
+        'employee','employees','staff','cashier','cashiers','worker','workers','personnel','receptionist','operator','account','accounts','permission','permissions','privilege','privileges','department','departments','administrator','admin','frontdesk','restaurant',
+        'business','address','waiting','check','dining','receipt','receipts','reprint','printing','printer','printed','print','preview','builder','layout','layouts','template','templates','thermal','acknowledgement','acknowledgment','branding','footer','header','settings','receiptbuilder','receiptsettings',
+        'payment','payments','pay','paid','unpaid','paying','settle','settlement','settled','balance','balances','outstanding','checkout','checkin','method','methods','noncash','cash','gcash','landbank','transfer','card','tender','overpay','overpayment','change',
+        'discount','discounts','senior','citizen','pwd','promotion','promotions','promo','vat','exemption','exempt','eligible','eligibility','statutory','latediscount',
+        'room','rooms','stay','stays','guest','guests','occupancy','occupied','vacant','available','availability','reservations','arrival','departure','checkin','checkout',
+        'order','orders','cart','food','menu','dish','dishes','category','categories','table','tables','item','items','quantity','quantities','meal','meals','restaurant','posted','post','charge','charges','roomcharge','roompost','service','services','catalog','catalogue','laundry','towels','motorbike','shuttle','rental',
+        'ticket','tickets','support','issue','issues','notification','notifications','alert','alerts','audit','history','logs','log','resolved','resolve','report','error','errors','invalid','failed','failing','disabled',
+        'create','creating','created','add','adding','register','edit','editing','update','updating','change','changing','manage','management','configure','customize','customise','design','designing','arrange','arranging','move','modify','rename','select','switch','activate','reactivate','deactivate','disable','enable','archive','restore','remove','delete','void','view','find','search','open','show','cancel','reverse','submit','save','record','collect','apply','assign','navigate','access','login','refund','adjust','price','pricing','rate','rates','browse','locate','print','reprint','help','troubleshoot',
+        'cannot','cant','wont','doesnt','wasnt','couldnt','isnt','not','paid','unpaid'
+    ];
+    const smartTypoGeneralWords = new Set(('a an and are as at be before bill but by can could did do does dont even every everything for from give get has have having he her here how i if in into is it its just know like me my need new no nor of on one only or our out please really right same should some something than that the their them there these they this those through to too us was we were what when where which while who why will with without would you your yesterday today tomorrow already again another first last previous next current existing after problem help want wants working work cannot cant wont isnt doesnt not able add edit update create delete remove activate deactivate view void paid unpaid new old now later yes no all any both every any much many many more into above below around between using use uses used over under never always sometimes then and else either yet still since even go going want actually how do i can you could you please tell show me about would like need i am im ive').split(/\s+/));
+    const smartTypoWords = [...new Set([...smartTypoDomainWords, ...Object.keys(smartNlpAliases),...Object.values(smartNlpAliases)])].filter(w => /^[a-z]{3,}$/.test(w));
+    const smartTypoWordSet = new Set(smartTypoWords);
+    const smartTypoDomainClasses = {
+        employee:new Set('employee employees staff cashier cashiers worker workers personnel receptionist administrator admin account accounts permissions permission privileges roles department'.split(' ')),
+        receipt:new Set('receipt receipts reprint print printer printing template layout builder thermal footer header branding receiptsettings receiptbuilder'.split(' ')),
+        payment:new Set('payment payments pay paid unpaid balance settle settlement cash gcash landbank card tender method methods overpayment'.split(' ')),
+        discount:new Set('discount discounts senior citizen pwd vat promotion promotions promo eligible statutory exemption'.split(' ')),
+        stay:new Set('room rooms stay stays guest guests checkin checkout occupancy vacant available departure arrival'.split(' ')),
+        restaurant:new Set('restaurant food order orders menu cart item items table tables dish dishes quantity roompost'.split(' ')),
+        support:new Set('ticket tickets support issues issue audit notification notifications error errors'.split(' '))
+    };
+    function smartTypoDistance(a,b,limit=3) {
+        if(Math.abs(a.length-b.length)>limit)return limit+1;
+        let prior2=null,prior=Array.from({length:b.length+1},(_,i)=>i);
+        for(let i=1;i<=a.length;i++){
+            const cur=[i];let min=i;
+            for(let j=1;j<=b.length;j++){
+                let cost=a[i-1]===b[j-1]?0:1;
+                let n=Math.min(cur[j-1]+1,prior[j]+1,prior[j-1]+cost);
+                if(prior2 && i>1 && j>1 && a[i-1]===b[j-2] && a[i-2]===b[j-1])n=Math.min(n,prior2[j-2]+1);
+                cur[j]=n;min=Math.min(min,n);
+            }
+            if(min>limit)return limit+1;
+            prior2=prior;prior=cur;
+        }
+        return prior[b.length];
+    }
+    function smartTypoFixWord(word,rawWords) {
+        if(word.length<4 || /\d/.test(word) || smartTypoGeneralWords.has(word) || smartTypoKnownEnglish.has(word) || smartTypoWordSet.has(word))return word;
+        if(word==='cashr'||word==='casher')return 'cashier';
+        if(word==='recieptt'||word==='reicept'||word==='recieptts')return word.endsWith('s')?'receipts':'receipt';
+        if(word==='dactivate'||word==='deactivte'||word==='deactvate')return 'deactivate';
+        if(word==='ractivate'||word==='reactivte'||word==='reacivate')return 'reactivate';
+        if(word==='ppost'||word==='psot')return 'post';
+        if(word==='voidded'||word==='voied')return 'voided';
+        if(word==='rom' && rawWords.some(x=>/^(guest|stay|room|order|bill|charge|food|restaurant|post|dinner|occupied|vacant|rooms|add|create|register|payment)$/i.test(x)))return 'room';
+        if(word==='foo' && rawWords.some(x=>/^(restaurant|order|post|room|rom|bill|meal)$/i.test(x)))return 'food';
+        const context=new Set(rawWords.filter(w=>w!==word));
+        const contextClasses=[];
+        for(const cls of Object.values(smartTypoDomainClasses))if([...context].some(w=>cls.has(w)))contextClasses.push(cls);
+        const candidates=[];
+        for(const candidate of smartTypoWords){
+            const max=Math.max(word.length,candidate.length);
+            if(max<4 || Math.abs(word.length-candidate.length)>3)continue;
+            let dist=smartTypoDistance(word,candidate,3);
+            const prefix=word.length>=5 && candidate.length>=6 && candidate.startsWith(word.slice(0,5));
+            const shared4=word.length>=5 && candidate.length>=5 && word.slice(0,4)===candidate.slice(0,4);
+            if(dist>2 && !prefix)continue;
+            if(dist===2 && max<7 && !shared4)continue;
+            if(dist===2 && !shared4 && !contextClasses.some(cls=>cls.has(candidate)))continue;
+            if(dist>2 && (!prefix || candidate.length-word.length>3))continue;
+            const inContext=contextClasses.some(cls=>cls.has(candidate));
+            let score=dist/Math.max(word.length,candidate.length)-(prefix?0.06:0)-(inContext?0.07:0);
+            if(word.slice(0,3)===candidate.slice(0,3))score-=0.038;
+            if(word.endsWith('s')===candidate.endsWith('s'))score-=0.028;
+            if(word.startsWith('d')&&candidate.startsWith('de'))score-=0.09;
+            if(word.startsWith('r')&&candidate.startsWith('re'))score-=0.065;
+            if(word.endsWith('tt')&&candidate==='receipt')score-=0.065;
+            if(word.endsWith('ls')&&candidate.endsWith('les'))score-=0.035;
+            if(score<=0.34)candidates.push({candidate,score,dist,inContext});
+        }
+        candidates.sort((a,b)=>a.score-b.score || Number(b.inContext)-Number(a.inContext) || a.candidate.localeCompare(b.candidate));
+        if(!candidates.length)return word;
+        const best=candidates[0],second=candidates[1];
+        if(second && second.score-best.score<0.032 && !best.inContext)return word;
+        if(best.dist===2 && !best.inContext && word.slice(0,4)!==best.candidate.slice(0,4))return word;
+        return best.candidate;
+    }
+    function smartTypoNormalize(input) {
+        const original=String(input||'');
+        if(!original.trim())return original;
+        const lower=original.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'');
+        const raw=lower.match(/\b[a-z]+\b/g)||[];
+        const normalized=raw.map(w=>smartNlpAliases[w]||w);
+        const fixed=[];
+        for(let i=0;i<raw.length;i++){
+            const w=raw[i];
+            if(/^(emploi|employ|employe|employes|employi|emploee|employy|empoyee)$/i.test(w) && (raw.some(x=>/^(add|adding|create|register|new|staff|user|cashier|account|permissions|permission|delete|remove|deactivate|reactivate|hire)$/i.test(x)) || /^empl(?:oi|oyee|yee|oyy)$/i.test(w)))fixed.push('employee');
+            else fixed.push(smartTypoFixWord(w,normalized));
+        }
+        for(let i=0;i<fixed.length;i++){
+            const w=fixed[i];
+            if(w==='rom' && (/\b(?:rom)[ -]?[0-9]{2,4}\b/.test(lower) || fixed.some(x=>/^(post|room|guest|stay|order|bill|charge|food|restaurant|dinner|occupied|vacant|rooms|add|create|register|payment|status|occupancy|edit|deactivate|inventory|checkout|inactive)$/i.test(x))))fixed[i]='room';
+            if(w==='mnu' && fixed.some(x=>/^(item|food|price|admin|category|create|edit|switch|order|add)$/i.test(x)))fixed[i]='menu';
+            if(w==='ad' && fixed.some(x=>/^(employee|cashier|table|menu|charge|item|order|room|staff)$/i.test(x)))fixed[i]='add';
+            if(w==='fod' && fixed.some(x=>/^(order|item|items|restaurant|post|room)$/i.test(x)))fixed[i]='food';
+        }
+        for(let i=0;i<fixed.length;i++){
+            if(fixed[i]==='foo' && fixed.some(x=>/^(post|room|restaurant|order|bill|meal)$/i.test(x)))fixed[i]='food';
+        }
+        let j=0;
+        return lower.replace(/\b[a-z]+\b/g,()=>fixed[j++]||'');
+    }
+    const smartNlpWordActions = new Set(['create','edit','find','deactivate','activate','reprint','payment','checkout','checkin','error','cannot','manage','post','void','cancel','resolve','preview','design','history','permission','status']);
+    function smartNlpAnalyze(input, previousTopic='') {
+        let text=smartTypoNormalize(input).toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[’']/g,'').replace(/[^a-z0-9\s-]/g,' ');
+        for(const [pattern,replacement] of smartNlpPhrases) text=text.replace(pattern,replacement);
+        const raw=text.split(/\s+/).filter(Boolean);
+        const words=raw.map(w=>smartNlpAliases[w]||w).filter(Boolean);
+        const s=new Set(words);
+        if(s.has('cannot') || s.has('error') || /\b(?:not\s+(?:work|working|print|printing|save|saving|open|opening|show|showing|load|loading|available)|doesnt\s+work|wont\s+work|isnt\s+working)\b/.test(text)) s.add('error');
+        if(s.has('how')&&s.has('much')) s.add('balance');
+        if((s.has('one')||s.has('it')||s.has('them'))&&previousTopic&&!Array.from(s).some(w=>['employee','receipt','order','room','payment','discount','stay','ticket','menu','table','service','charge','notification','audit','receiptbuilder','receiptsettings','paymentmethod'].includes(w))) s.add(previousTopic);
+        if(s.has('employee')&&s.has('permission')) s.add('manage');
+        if(s.has('receiptbuilder')) s.add('design');
+        if(s.has('receiptsettings')) s.add('manage');
+        if(s.has('paymentmethod')) s.add('manage');
+        if(s.has('checkout')) s.add('checkout');
+        if(s.has('checkin')) s.add('checkin');
+        return {raw,words,tokens:s,text};
+    }
+    function smartNlpRoute(question,previousTopic='') {
+        let q=smartTypoNormalize(question).toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[’']/g,"'").replace(/[^a-z0-9'\s-]/g,' ').replace(/\s+/g,' ').trim();
+        if(!q)return {status:'unknown'};
+        const hit=re=>re.test(q);
+        const employee=hit(/\b(employee|employees|staff|worker|workers|cashier|cashiers|receptionist|operator|personnel|teammate|team member|colleague|coworker|user|users|staff account|login|staff roster|account rights|staff directory|reactivate an account|non-admin access|who has access)\b/);
+        const receipt=hit(/\b(receipt|receipts|reprint|printer|acknowledg\w*|paid bill printed again|bill print|printed bill|printed receipt|printer output|print output|invoice|printout|thermal|receipt footer|receipt header|printed on bills|footer text printed)\b/);
+        const discount=hit(/\b(discount|discounts|pwd|senior|statutory|vat exemption|vat relief|deduction|eligible diners?)\b/);
+        const payment=hit(/\b(payment|payments|pay|paid|paying|settle|settlement|cash|gcash|noncash|non-cash|bank|card|tender|money|balance|checkout|check out|bill|overpayment)\b/);
+        const order=hit(/\b(order|orders|cart|food|meal|meals|dinner|table bill|restaurant pos|restaurant bill|restaurant table|dish|dishes|drinks|coffee|chicken|plate)\b/);
+        const room=hit(/\b(room|rooms|occupancy|occupied|vacant|availability|vacancies|stay|stays|guest|guests|checkin|check-in|check out|checkout|arrival|depart|visitor|departure|availability board)\b/);
+        const ticket=hit(/\b(ticket|tickets|support|issues?|problem report|maintenance|service request|report|faulty|report a broken|help from the admin|staff problem)\b/);
+        const nav=hit(/\b(where|find|locate|view|show|list|search|open|see|inspect|look up|roster|directory|browse|history|statuses|status)\b/);
+        const make=hit(/\b(add|create|new|register|setup|set up|make|hire|onboard|enter|record|give|start|assign|input|post|charge|place|take|receive|collect|accept|submit)\b/);
+        const edit=hit(/\b(change|edit|modify|update|adjust|configure|manage|customiz|rename|set|design|rearrang|publish|build|alter)\b/);
+        const trouble=hit(/\b(why|can't|cant|cannot|couldn|won't|wont|doesn't|doesnt|isn't|isnt|unable|error|fail|failed|failing|rejected|rejects|refuses|invalid|broken|missing|disappear|disappeared|duplicate|wrong|stuck|not working|not print|not showing|not in|no longer|does nothing|not available|wasn.t|didn.t|keeps|uncertain|disabled|will not|would not|did not|not eligible|not applying|unpaid|unsettled)\b/);
+        if(hit(/\b(wi-?fi|weather|airline|flights?|electricity bill|utility bill|health record|guest password|bank balance|bank transactions?|resort earnings?|revenue|net profit|official bank|cashier stealing|owner of the resort|official tax invoice registration|account pin|recipe|basketball|government tax due|tax should.*pay|how much tax.*bir|real visitors|opening schedule|real cost|building a new wing|send money|transfer money from gcash|refund a customer automatically|automatically refund|erase all.*receipts|delete.*audit|rent a room|room rental pric|room rental prices|book airline)\b/) || hit(/\b(password|pin)\b/))return {status:'unknown'};
+        if(hit(/\b(what do i do with this|where do i put it|fix the thing|can you get rid of this|help with users and menu|change it now|why is it not working|help with payment and discounts|what is the difference between|how do i add it|undo everything|print and cancel|how do i change status|did my payment go through|is it paid|why are there duplicates|how much change do i give|why isnt my stuff here)\b/))return {status:'clarify'};
+        if(hit(/\b(and then| and )\b/) && hit(/\b(create|add|give|change|modify|update|print|reprint|reverse|cancel|discount)\b/) && ((employee&&receipt)||(employee&&discount)||(employee&&hit(/\b(menu|receipt|payment)\b/))||(payment&&discount&&hit(/\bhelp with\b/))||(receipt&&hit(/\breverse\b/))))return {status:'clarify'};
+        if(hit(/\b(bank.*balance|electricity|electric bill|utility|legally compliant|official bir|room rental|nightly rate|booking.*room rental|actual account balance|credit card number)\b/))return {status:'unknown'};
+        if(hit(/\b(how do i.*and then|and then modify|and also|both.*and|as well as.*and|cancel.*and.*refund|update.*and.*payment|void.*and.*refund)\b/) && hit(/\b(employee|receipt|payment|order|room|menu|ticket|discount|cashier|staff)\b/))return {status:'clarify'};
+        if(hit(/\b(help me with|help with)\b/) && payment && discount)return {status:'clarify'};
+        if(hit(/\b(check|verify|confirm|whether|unsure)\b/) && hit(/\bpayment\b/) && hit(/\b(success|succeed|succeeded|successful|went through|processed|recorded)\b/))return {id:'payment.error'};
+        if(hit(/\b(cashier typed|cashier entered|amount tendered|amount due.*fails|transaction went through|unsure whether.*transaction)\b/))return {id:'payment.error'};
+        if(hit(/\b(checkout blocked|unpaid incidental|stay.*not closing|stay.*does not close|departure button rejects|finish.*departure.*block)\b/))return {id:'stay.checkout-error'};
+        if(hit(/\b(issue a legally compliant|pay electricity|utility bill)\b/))return {status:'unknown'};
+        if(hit(/\b(receipt.*repeated|reprint.*blank|acknowledg.*never opens|printer output.*wrong|receipt.*pdf.*not|receipt.*pdf.*never)\b/))return {id:'receipt.error'};
+        if(hit(/\b(duplicate copy.*pay|same paid bill.*print\w*|past receipt|copy of pay-[0-9]+)\b/))return {id:'receipt.reprint'};
+        if(hit(/\b(logo.*company address|mobile number.*receipt|tin.*acknowledg|business contact.*receipt)\b/))return {id:'receipt.settings'};
+        if(hit(/\b(drag.*header|millimeter slips?|editor.*slips?|custom.*slip|thermal ticket format)\b/))return {id:'receipt.builder'};
+        if(hit(/\b(room.*inactive|mark.*room.*inactive|decommission.*room)\b/))return {id:'room.create'};
+        if(hit(/\b(seasonal.*offer|scheduled promo|promotional campaign|switch off.*campaign)\b/))return {id:'promotion.manage'};
+        if(hit(/\b(restaurant charges.*front desk|table bill.*occupied room|link.*table bill|post the meal|attach.*meal.*room)\b/))return {id:'order.roompost'};
+        if(role==='restaurant' && hit(/\b(void.*mistake|procedure to void|reverse.*restaurant ticket)\b/))return {id:'order.void'};
+        if(role==='restaurant' && hit(/\b(add another menu item|another menu item)\b/))return {id:'order.additems'};
+        if(hit(/\b(restaurant ticket.*new customer|first orders|food ordering|restaurant.*new customer)\b/))return {id:'order.create'};
+        if(hit(/\b(report.*equipment|equipment problem|raise.*support case|broken.*printer)\b/))return {id:'ticket.create'};
+        if(hit(/\b(admin.*finish.*issue|finish.*issue|change.*tickets.*resolved|close.*maintenance ticket)\b/))return {id:'ticket.resolve'};
+        if(hit(/\b(restaurant.*staff.*activity|who made.*settlement|trace.*void history|staff activity logs|void history|find.*staff.*logs)\b/))return {id:'audit.search'};
+        if(hit(/\b(resigned.*account|suspend.*staff|stop.*employee.*pos|stop.*former.*employee|suspend.*login)\b/))return {id:'employee.deactivate'};
+        if(hit(/\b(undisable|team profile.*inactive|turn back on.*profile|turn.*profile.*back on|restore previously disabled)\b/))return {id:'employee.activate'};
+        if(/\b(?:why|cannot|cant|can't|unable|won't|wont|stuck|failed|error|blocked)\b/.test(q) && /\b(?:check\s*out|checkout)\b/.test(q) && /\b(?:guest|visitor|someone|somebody|room)\b/.test(q))return {id:'stay.checkout-error'};
+        if(/\bcheck\s+(?:(?:someone|somebody|a guest|a visitor|a customer|the guest|this person|that person|a person|them)\s+)?out\b/.test(q) && /\b(?:someone|somebody|guest|visitor|person|customer|them)\b/.test(q))return role==='restaurant'?{status:'clarify'}:{id:'stay.checkout'};
+        if(hit(/\b(hired.*waiter|enroll someone|enrol someone|new staff user|create.*profile|enroll.*staff)\b/))return {id:'employee.create'};
+        if(hit(/\b(personnel directory|staff identities|saved cashiers|existing staff identities)\b/))return {id:'employee.find'};
+        if(hit(/\b(departmental access|dual-role|dual department|cashier.*reception|cashier.*front desk too|reception too)\b/))return {id:'employee.permissions'};
+        if(hit(/\b(accepted payment type|configure.*digital payments|payment type|payment options|payment option)\b/))return {id:'payment.method'};
+        if(hit(/\b(guest.*paid part|paid part.*incidental|cash towards.*charge|collect.*restaurant counter)\b/))return {id:'payment.record'};
+        if(!trouble && hit(/\b(sc benefit|senior.*benefit|statutory relief|qualified senior.*deduction)\b/))return {id:'discount.apply'};
+        if(hit(/\b(start a visit record|incoming guest|arriving family)\b/))return {id:'stay.create'};
+        if(hit(/\b(set.*stay.*completed|complete.*room departure|finish.*stay.*balances)\b/))return {id:'stay.checkout'};
+        if(hit(/\b(append.*incidental|active room.*towels|motorbike.*put.*stay|bill.*room.*towels)\b/))return {id:'charge.post'};
+        if(hit(/\b(unit price|rice.*price|category picture|out.of.stock|hide.*halo|new orders.*price)\b/))return {id:'menu.manage'};
+        if(hit(/\b(per.hour.*fee|extra service rates|service.*catalog entry|rental fee|price.*service)\b/))return {id:'service.manage'};
+        if(hit(/\b(updates on support requests|check.*bell for messages|unread work alerts)\b/))return {id:'notification.view'};
+        if(hit(/\b(table.*add items|front desk.*payment.*restaurant.*post|pay.*print afterward|check out vs restaurant checkout|employee.*transaction history|print it.*deactivate|create two.*settle|adjust payment.*update an employee|handle the issue|where.*action button)\b/))return {status:'clarify'};
+        if(hit(/\b(order food for me|place a food order for me|buy food for me)\b/))return {status:'unknown'};
+        if(hit(/\b(can i get rid of this|admin access for this|do everything for me|export anything|delete this but keep|what does the button do|why is that number weird|update a setting|something is wrong|please fix it)\b/))return {status:'clarify'};
+        if(hit(/\b(notification|notifications|alerts?|bell|unread|notices?|badge on the bell|new support replies|ticket update notices)\b/))return {id:'notification.view'};
+        if(hit(/\b(audit|audit log|audit trail|logs|staff actions|employee actions|who (?:settled|voided|changed|posted|edited)|trace.*(?:action|payment)|history of administrative|past actions|find changes made|changes made by a staff|who has changed)\b/))return {id:'audit.search'};
+        if(hit(/\b(who .*order.*yesterday|who .*order.*void|who .*staff.*action)\b/))return {id:'audit.search'};
+        if(hit(/\b(catalog.*restaurant.*tables|catalog.*seating.*tables|table.*called .*|inactive table.*order|inactive table.*ordering|remove.*inactive table)\b/))return {id:'table.manage'};
+        if(hit(/\b(restaurant ticket|food ticket)\b/) && hit(/\b(reverse|cancel|void|incorrect)\b/))return {id:'order.void'};
+        if(ticket && (hit(/\b(ticket|tickets|support|issues?|maintenance|problem report|report a|reporting|faulty|broken|staff problem)\b/))){
+            if(hit(/\b(resolve|resolved|resolution|mark.*resolved|close.*ticket|close.*issue|finaliz\w*|finish.*ticket|complete.*ticket|permission to resolve|staff problem)\b/) && hit(/\b(resolve|resolved|resolution|close|finaliz\w*|finish|complete|permission to resolve)\b/))return {id:'ticket.resolve'};
+            if(hit(/\b(create|new|open|report|ask|submit|send|raise|need help|faulty|broken|where|request)\b/))return {id:'ticket.create'};
+        }
+        if(employee){
+            if(hit(/\b(need.*(?:employee|cashier|staff).*account|need.*another.*account)\b/))return {id:'employee.create'};
+            if(hit(/\b(remove.*(?:cashier|employee|worker|staff)(?:.*account|.*access|\b))\b/))return {id:'employee.deactivate'};
+            if(hit(/\b(reactivate|re-activate|re-enable|reenable|unarchive|turn.*back on|back.*active|restore|returned|back on the team|active again|activate|enable an inactive)\b/))return {id:'employee.activate'};
+            if(hit(/\b(deactivate|disable|revoke|inactive|remove access|former|fired|left|departed|terminated|archive|switch off|turn off|prevent.*using|no longer works)\b/))return {id:'employee.deactivate'};
+            if(hit(/\b(both|also do front desk|two departments|front desk and restaurant|restaurant and front desk|permission|permissions|privileges?|rights|department access|roles?|cross.department|other workspace|another dashboard|cannot see.*dashboard|access to.*department|give.*access to restaurant and front desk)\b/) && (hit(/\b(give|change|edit|update|assign|manage|configure|grant|access|see|can|how|both)\b/)))return {id:'employee.permissions'};
+            if((make||hit(/\b(how to register|register a front desk|new operator)\b/)) && !hit(/\b(payment|receipt|transaction|record.*payment)\b/))return {id:'employee.create'};
+            if(nav || hit(/\b(roster|directory|accounts|list of|who has access|saved staff|account rights)\b/))return {id:'employee.find'};
+        }
+        if(receipt){
+            if(hit(/\b(why|cannot|cant|can't|won't|wont|does not|doesnt|broken|fail|missing|disappear|disappeared|wrong|duplicate|did not|nothing|not visible|not print|not open|will not|does nothing|not loading|printer output|no longer|not working)\b/) && hit(/\b(receipt|print|printer|preview|view|reprint|history)\b/))return {id:'receipt.error'};
+            if(hit(/\b(receipt builder|templates?|layouts?|blocks?|design|rearrang\w*|arrang\w*|position\w*|58\s*mm|80\s*mm|a4|publish|thermal|format|customiz\w*|move.*field|preview.*design|build my own)\b/))return {id:'receipt.builder'};
+            if(hit(/\b(settings|branding|business|resort name|address|tin|branch|contact|logo|footer|tax mode|profile|printed under|receipt profile|printed on bills)\b/))return {id:'receipt.settings'};
+            if(hit(/\bprint(?:ing)?\b/) && !trouble)return {id:'receipt.reprint'};
+            if(hit(/\b(reprint|print another|print.*again|view.reprint|receipt history|old|previous|historic|past|lost|find|look up|search|saved|settled|same receipt|receipt number|acknowledgement again|view|open|yesterday|existing)\b/))return {id:'receipt.reprint'};
+        }
+        if(hit(/\b(promotion|promotions|promotional|promo|campaign|happy hour|sale campaign)\b/) && !hit(/\b(not eligible|rejected|failed|error|says not)\b/) && (hit(/\b(create|manage|admin|edit|date|deactivate|activate|configure|expiry|expired|validity|food promo|new|where|see promotional|eligibility|setup|set up|change)\b/)||!discount))return {id:'promotion.manage'};
+        if(discount){
+            if(trouble && hit(/\b(fail|rejected|invalid|error|cannot|cant|can't|won't|wont|doesnt|isnt|not|eligible|disabled|missing|wrong|not appearing|not applying|says not)\b/))return {id:'discount.error'};
+            if(hit(/\b(apply|give|add|put|where|how|discount|deduct|use|calculate|vat exempt|senior|pwd|late|eligible)\b/))return {id:'discount.apply'};
+        }
+        if(hit(/\b(payment method|payment methods|gcash|landbank|transfer|card terminal|bank transfer|payment option|payment options|method dropdown|noncash|non-cash|method classification|classify cash|classif\w*.*noncash)\b/) && (hit(/\b(add|set up|setup|manage|configure|classif\w*|rename|disable|enable|activate|inactive|old|options|dropdown|missing|not in|not appear|select|method|payment method)\b/) || (hit(/\b(gcash|landbank)\b/) && hit(/\b(dropdown|list|available|shown|appear|option)\b/))))return {id:'payment.method'};
+        if(hit(/\b(laundry|motorbike|extra towels?|extra bed|airport shuttle|service|services|additional charges?|additional charges management|extra charge type|service catalog|shuttle|rental|incidental|extra costs?|fee)\b/) && !(hit(/\b(reenable|reactivate|enable)\b/) && hit(/\b(table|tables)\b/))){
+            if(hit(/\b(price|pricing|rate|rates|catalog|catalogue|admin|configure|manage|management|create.*service|edit.*service|deactivate.*service|deactivate.*charge type|hourly billing|change.*rate|update.*price)\b/) && !hit(/\b(incidental service fee|add.*guest charge|post extra costs)\b/))return {id:'service.manage'};
+            if(room || hit(/\b(charge|post|add|fee|extra cost|costs|quantity|service)\b/))return {id:'charge.post'};
+        }
+        if(!hit(/\b(dining room|restaurant table)\b/) && hit(/\b(room post|room charge this|room charges?|post.*room|post.*stay|post food charges|send.*front desk|send.*room|attach.*active stay|bill room|food bill.*room|restaurant bill.*room|charge.*food.*room|room.*dinner|meal.*room|order.*room|order.*stay|room.*order|guest room|occupied guest room|bill to the room)\b/) && (order || hit(/\b(post|bill|dinner|meal|food|restaurant|table)\b/)))return {id:'order.roompost'};
+        if(hit(/\b(table|tables|dining|awaiting payment)\b/)){
+            if(hit(/\b(admin|add a new table|add table|create.*table|edit.*table|rename.*table|deactivate.*table|reactivate.*table|configure.*tables|manage.*table|table catalog|table records|table 13|table 09|re.?enable a table)\b/) && !hit(/\b(bill|order|cart|items)\b/))return {id:'table.manage'};
+            if(hit(/\b(status|statuses|available|availability|dining|awaiting payment|waiting|which|show|find|filter|in use|occupied|how many|current|open|what is table|tables await payment)\b/) && !hit(/\b(order|cart|items|new order)\b/))return {id:'table.status'};
+        }
+        if(hit(/\b(menu|menu item|food category|category|categories|dish|chicken price|food pricing|drink|description|upload|image)\b/) && !hit(/\b(add another menu item|more menu items|current order|another menu item)\b/) && hit(/\b(admin|category|categories|description|price|pricing|upload|image|manage menu|menu item|deactivate|availability|new drink|edit|create.*category|switch.*off|food dish)\b/) && !hit(/\b(cart|existing order|current order|current table|add another.*order|extra.*order)\b/))return {id:'menu.manage'};
+        if(order){
+            if(hit(/\b(void|cancel|reverse|wrong order|duplicate.*order|accidentally created|remove.*order|void a mistake)\b/))return {id:'order.void'};
+            if(hit(/\b(existing order|current order|cart|another.*item|more items|quantity|quantities|extra meals|another plate|additional.*item|add drinks|increase|update.*order|change.*order|add.*coffee|add.*menu item|add.*plate|two extra meals|food items.*table order|add another menu item)\b/))return {id:'order.additems'};
+            if(hit(/\b(new order|create.*order|start.*order|take.*order|enter.*order|place.*order|make.*order|start ordering|restaurant pos|ordering.*meal|table order|create.*bill|order for table|guest order|food order|dining room order|order.*dining room|bill for.*restaurant table)\b/))return {id:'order.create'};
+        }
+        if(hit(/\b(check the amount received|checkout says.*amount|payment.*status.*uncertain)\b/))return {id:'payment.error'};
+        if(hit(/\b(add an additional guest charge|add.*guest charge|post extra costs?)\b/))return {id:'charge.post'};
+        if(room){
+            if(hit(/\b(check[ -]?out|checkout|departure|end.*stay|close.*stay|finish.*stay|mark.*finished|visitor leaves|guest leaves|guest depart|complete.*checkout|complete.*stay|leave.*room|leaves the room|unsettled charges before checkout|room become vacant|completing a stay)\b/) && !hit(/\b(expected checkout date|input expected checkout|new stay|register a stay)\b/)){
+                if((trouble && !hit(/\b(where to verify|where.*before checkout)\b/))||hit(/\b(not eligible|keeps failing|error|cannot checkout|cant checkout|it says unsettled|unpaid charge|room become vacant)\b/))return {id:'stay.checkout-error'};
+                return {id:'stay.checkout'};
+            }
+            if(hit(/\b(check[ -]?in|register.*stay|register.*guest|new stay|new arrival|arriving|assign.*vacant|record.*arrival|expected checkout date|occupied stay|new guest|create.*stay|arrival|visitor|register a stay|record a new arrival)\b/) && !hit(/\b(room status|room catalog|admin setup)\b/))return {id:'stay.create'};
+            if(hit(/\b(add.*room|create.*room|deactivate.*room|edit.*room|room number|new room|room inventory|room catalog|manage.*room|activate.*room|disabled room|renovation|room 305|remove.*room|register.*room|admin setup|add room)\b/))return {id:'room.create'};
+            if(hit(/\b(occupied|vacant|available|availability|occupancy|statuses|status|rooms grid|which room|which rooms|what room|lookup|look up|all rooms|find room|see room|room 101|room status|availability board)\b/))return {id:'room.status'};
+        }
+        if(payment){
+            const actualPaymentError=hit(/\b(why|can't|cant|cannot|couldn|won't|wont|doesn't|doesnt|unable|error|fail|failed|rejected|rejects|refuses|invalid|stuck|not working|not processing|uncertain|problem|does nothing|not accepted|overpayment)\b/);
+            if((actualPaymentError||hit(/\b(uncertain payment|payment status is uncertain|checkout says check)\b/)) && hit(/\b(payment|pay|paying|settle|settlement|checkout|cash|balance|gcash|amount|overpayment)\b/))return {id:'payment.error'};
+            if(hit(/\b(pay|payment|settle|settlement|collect|receive|cash|gcash|outstanding|balance|guest bill|remaining balance|record|mark.*paid|amount|money)\b/))return {id:'payment.record'};
+        }
+        if(ticket)return {id:'ticket.create'};
+        if(previousTopic && hit(/\b(one|it|them|that|those)\b/))return {status:'clarify'};
+        return null;
+    }
+    function smartNlpMatch(query, previousTopic='') {
+        const routing=smartNlpRoute(query,previousTopic);
+        if(routing?.status)return [];
+        if(routing?.id){
+            const intent=smartIntentDefinitions.find(x=>x.id===routing.id);
+            if(intent){
+                const preferred=Object.entries(intent.articles||{}).find(([workspace])=>workspace===role)||Object.entries(intent.articles||{}).find(([workspace])=>hasAccess(workspace))||Object.entries(intent.articles||{})[0];
+                const article=HELP_ARTICLES.find(x=>x.id===preferred?.[1]);
+                if(article)return [{article,score:300,intent,restricted:!hasAccess(article.role),workspaceSwitch:hasAccess(article.role)&&role!==article.role,matched:3}];
+            }
+        }
+        const p=smartNlpAnalyze(query,previousTopic), t=p.tokens;
+        const results=[];
+        const hasGroup=arr=>arr?.some(x=>t.has(x));
+        for(const intent of smartIntentDefinitions){
+            if(!hasGroup(intent.objects)) continue;
+            const foundAction=hasGroup(intent.actions);
+            if(!foundAction) continue;
+            if(intent.id.startsWith('employee.')&&!t.has('employee'))continue;
+            if(intent.id==='employee.create' && (t.has('paymentmethod')||t.has('receipt')))continue;
+            if(intent.id==='receipt.reprint' && (t.has('receiptbuilder')||t.has('receiptsettings')))continue;
+            if(intent.id==='payment.record' && (t.has('paymentmethod')||t.has('error')))continue;
+            if(intent.id==='payment.method'&&!t.has('paymentmethod')&&!((t.has('method'))&&(t.has('payment')||t.has('gcash')||t.has('cash')||t.has('bank')||t.has('card'))))continue;
+            if(intent.id==='order.create'&&t.has('roompost'))continue;
+            if(intent.id==='order.additems'&&!t.has('item')&&!t.has('cart')&&!t.has('menu'))continue;
+            if(intent.id==='order.roompost'&&!t.has('roompost')&&!((t.has('room')||t.has('roomcharge'))&&(t.has('order')||t.has('post'))))continue;
+            if(intent.id==='service.manage'&&t.has('roomcharge')&&!t.has('service'))continue;
+            if(intent.id==='table.manage'&&role!=='admin'&&t.has('order'))continue;
+            if(intent.id.endsWith('.error')&&!t.has('error'))continue;
+            const roleArticleId=intent.articles?.[role];
+            const authorizedArticleId=Object.entries(intent.articles||{}).find(([workspace])=>hasAccess(workspace))?.[1];
+            const articleId=roleArticleId||authorizedArticleId||intent.articles?.admin||Object.values(intent.articles||{})[0];
+            const article=HELP_ARTICLES.find(x=>x.id===articleId);
+            if(!article)continue;
+            const relevantObject=intent.objects.filter(x=>t.has(x)).length;
+            const relevantAction=intent.actions.filter(x=>t.has(x)).length;
+            let score=100+intent.priority*8+relevantObject*12+relevantAction*9+(roleArticleId?7:0);
+            if(intent.id==='employee.permissions'&&(t.has('permission')||t.has('edit')))score+=40;
+            if(intent.id==='employee.create'&&t.has('create'))score+=40;
+            if(intent.id==='payment.error'&&t.has('error'))score+=30;
+            if(intent.id==='receipt.error'&&t.has('error'))score+=30;
+            if(intent.id==='discount.error'&&t.has('error'))score+=30;
+            if(intent.id==='stay.checkout-error'&&t.has('error'))score+=30;
+            if(intent.id==='receipt.reprint'&&t.has('reprint'))score+=25;
+            if(intent.id==='order.roompost'&&t.has('roompost'))score+=60;
+            if(intent.id==='table.manage'&&t.has('table')&&t.has('create'))score+=35;
+            if(intent.id==='order.create'&&t.has('order')&&!t.has('item'))score+=30;
+            if(intent.id==='order.additems'&&t.has('order')&&t.has('item'))score+=65;
+            if(intent.id==='stay.create'&&t.has('stay'))score+=30;
+            if(intent.id==='room.create'&&t.has('room')&&t.has('create'))score+=35;
+            if(intent.id==='menu.manage'&&t.has('menu')&&t.has('edit'))score+=30;
+            if(intent.id==='payment.method'&&t.has('paymentmethod'))score+=60;
+            if(intent.id==='receipt.settings'&&t.has('receiptsettings'))score+=70;
+            if(intent.id==='receipt.builder'&&t.has('receiptbuilder'))score+=70;
+            if(intent.id==='ticket.resolve'&&t.has('resolve'))score+=55;
+            results.push({article,score,intent,restricted:!hasAccess(article.role),workspaceSwitch:hasAccess(article.role)&&role!==article.role,matched:relevantObject+relevantAction});
+        }
+        results.sort((a,b)=>b.score-a.score);
+        return results;
+    }
+    let smartLastNlpTopic='';
+    const smartStopWords = new Set(['a','an','the','to','do','does','is','are','can','could','please','i','we','our','my','me','you','in','on','at','for','of','with','where','what','how','would','should','and','or','there','this','that','want','need','get','go','from','new','another','some','tell','show','why','cant','cannot','last','not']);
+    const smartAliases = {
+        staff:['employee','user','cashier','account'],employee:['staff','user','cashier','account'],user:['employee','staff','account'],add:['create','register','new'],create:['add','register','new'],register:['add','create','new'],
+        receipt:['acknowledgement','acknowledgment','print','reprint'],reprint:['receipt','print','history'],print:['reprint','receipt'],
+        paid:['payment','settle','settlement'],payment:['pay','settle','cash','checkout'],pay:['payment','settle','checkout'],settle:['payment','pay','outstanding'],
+        discount:['pwd','senior','citizen','promo','promotion'],pwd:['discount','senior','citizen'],senior:['pwd','discount'],
+        help:['guide','tutorial','instructions'],broken:['error','failed','problem'],error:['problem','invalid','failed'],
+        table:['restaurant','order'],order:['restaurant','table'],room:['frontdesk','stay'],
+        customize:['builder','settings','template'],design:['builder','template','layout'],
+        gcash:['payment','noncash','method'],vat:['tax','discount','exemption'],change:['edit','update','configure','customize'],make:['create','add','register'],printing:['print','reprint','receipt'],account:['user','employee','staff'],cashier:['employee','staff','account'],template:['receipt','builder','layout']
+    };
+    function smartWords(value) {
+        return String(value || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g,' ').split(/\s+/).filter(t=>t && !smartStopWords.has(t)).slice(0,14);
+    }
+    function smartSimilar(a,b) {
+        if(a===b || b.startsWith(a) && a.length>=4 || a.startsWith(b) && b.length>=4) return true;
+        if(a.length<4 || b.length<4 || Math.abs(a.length-b.length)>1) return false;
+        let last=Array.from({length:b.length+1},(_,i)=>i);
+        for(let i=1;i<=a.length;i++) {
+            const current=[i];
+            for(let j=1;j<=b.length;j++) current[j]=Math.min(current[j-1]+1,last[j]+1,last[j-1]+(a[i-1]===b[j-1]?0:1));
+            last=current;
+        }
+        return last[b.length]<=1;
+    }
+    function smartMatches(word,hayWords) {
+        const choices=[word,...(smartAliases[word]||[])];
+        return choices.reduce((best,c,i)=>Math.max(best,hayWords.some(x=>x===c)?(i===0?5:3):hayWords.some(x=>smartSimilar(c,x))?(i===0?3:1):0),0);
+    }
+    function smartFind(q,cat='all') {
+        if(cat==='all' && smartNlpRoute(q,smartLastNlpTopic)?.status)return [];
+        const intentMatches=cat==='all'?smartNlpMatch(q,smartLastNlpTopic).filter(x=>x.article&&hasAccess(x.article.role)):[];
+        const words=smartWords(smartTypoNormalize(q));
+        if(!words.length && !intentMatches.length) return [];
+        const ranked=HELP_ARTICLES.filter(a=>hasAccess(a.role) && (cat==='all'||a.category===cat)).map(a=>{
+            const title=smartWords(a.title),keyword=smartWords(a.keywords),summary=smartWords(a.summary),body=smartWords(a.steps.join(' ')+' '+a.note);
+            let score=0,matched=0;
+            for(const w of words){
+                const m=Math.max(smartMatches(w,title)*5,smartMatches(w,keyword)*4,smartMatches(w,summary)*2,smartMatches(w,body));
+                if(m){score+=m;matched++;}
+            }
+            if(!matched || (words.length<=2 && matched!==words.length) || (words.length>2 && matched/words.length<0.67)) return null;
+            score=score*matched/words.length;
+            if(a.role===role) score+=7;
+            else score-=4;
+            if(a.role===role && a.routes.includes(route)) score+=3;
+            if(helpCurrentContext().ids.includes(a.id)) score+=4;
+            return {article:a,score,matched};
+        }).filter(Boolean).sort((a,b)=>b.score-a.score||a.article.title.localeCompare(b.article.title));
+        if(!intentMatches.length)return ranked;
+        const matchedIds=new Set(intentMatches.map(x=>x.article.id));
+        return [...intentMatches,...ranked.filter(x=>!matchedIds.has(x.article.id))];
+    }
+    function smartActivityKey() {return 'resortOS-smarthelp-articles-v1:'+String(employee()?.id||role);}
+    function smartLoadActivity() {
+        try {const ids=JSON.parse(localStorage.getItem(smartActivityKey())||'[]');return Array.isArray(ids)?ids.filter(x=>typeof x==='string').slice(0,12):[];} catch {return [];}
+    }
+    function smartRememberArticle(id) {
+        smartRecent=[id,...smartRecent.filter(x=>x!==id)].slice(0,12);
+        try {localStorage.setItem(smartActivityKey(),JSON.stringify(smartRecent));} catch {}
+    }
+    function smartContextArticles() {
+        const ids=helpCurrentContext().ids;
+        const list=ids.map(helpAllowed).filter(Boolean);
+        const fallback=HELP_ARTICLES.filter(a=>a.role===role && a.category==='start');
+        return [...list,...fallback].filter((a,i,all)=>all.findIndex(x=>x.id===a.id)===i).slice(0,4);
+    }
+    function smartTopicMarkup(article) {
+        return `<button type="button" class="smart-topic" data-action="help-article" data-id="${esc(article.id)}"><span class="smart-topic-copy"><small>${esc(HELP_CATEGORIES[article.category])}</small><strong>${esc(article.title)}</strong><span>${esc(article.summary)}</span></span><span class="smart-topic-arrow" aria-hidden="true">→</span></button>`;
+    }
+    function smartSearchMarkup(text,category='all') {
+        const boundary=smart74Boundary(text,'');
+        if(boundary?.status==='unknown')return '<div class="smart-fallback"><strong>No verified resortOS feature found</strong><p>I cannot confirm this functionality or recommend an unrelated guide. Try another Help topic or ask management through Support & Issues.</p><button type="button" class="smart-link" data-action="help-smart-support">Ask Support & Issues →</button></div>';
+        const results=smartFind(text,category).filter(x=>x.article&&hasAccess(x.article.role));
+        if(!smartWords(text).length) return '<div class="smart-empty">Try “add employee”, “reprint receipt”, or “apply discount”.</div>';
+        if(!results.length) return `<div class="smart-fallback"><strong>No reliable matching answer yet</strong><p>Try a shorter phrase, browse the articles, or ask management through Support & Issues. SmartHelp will not invent instructions.</p><button type="button" class="smart-link" data-action="help-smart-support">Create a support ticket →</button></div>`;
+        return results.slice(0,8).map(({article})=>smartTopicMarkup(article)).join('');
+    }
+    let smart73AskStatus=null;
+    function smart73ImmediateAnswer(question){
+        const q=String(question||'').toLowerCase().replace(/[’]/g,"'");
+        let id='';
+        if(/\b(?:staff|employee|account|cashier|operator|user)\b/.test(q)&&/\b(?:look up|find|browse|view|see|directory|roster)\b/.test(q)&&/\b(?:existing|not add|not create|already|current|previously)\b/.test(q))id='employee.find';
+        else if(/\b(?:staff|employee|account|cashier|operator|user)\b/.test(q)&&/\b(?:resigned|terminated|no longer log in|disable.*(?:account|them)|block.*account)\b/.test(q))id='employee.deactivate';
+        else if(/\b(?:staff|employee|operator|cashier|waiter|receptionist)\b/.test(q)&&/\b(?:both departments|which dashboards|department privileges|front desk plus restaurant|permission settings)\b/.test(q))id='employee.permissions';
+        else if(/\b(?:receipt|bill|proof of payment)\b/.test(q)&&/\b(?:reprint|previous|another copy|second copy|print.*again)\b/.test(q))id='receipt.reprint';
+        else if(/\b(?:checkout|check out|departure)\b/.test(q)&&/\b(?:blocked|unpaid|unsettled|can't|cannot|won't|error)\b/.test(q))id='stay.checkout-error';
+        if(!id)id=smart73DomainEvidence(question)?.id||'';
+        if(!id)return null;
+        const intent=smartIntentDefinitions.find(x=>x.id===id);
+        const preferred=Object.entries(intent?.articles||{}).find(([workspace])=>workspace===role)
+            ||Object.entries(intent?.articles||{}).find(([workspace])=>hasAccess(workspace))
+            ||Object.entries(intent?.articles||{})[0];
+        const verified=smart743ArticleFor(id);
+        if(!verified || smart743ObjectGate(question,id))return null;
+        const article=verified.article;
+        return {article,intent,score:400,matched:3,verifiedCapability:id,restricted:verified.restricted,workspaceSwitch:hasAccess(article.role)&&role!==article.role};
+    }
+    function smartRunQuestion(question){
+        const incoming=String(question||'').trim().slice(0,240);
+        if(!incoming)return;
+        smartSemanticRunId++; // cancel any in-flight stale model answer
+        smartAskDraft='';
+        const decision=smart744Policy(incoming,smart744LastVerified);
+        smartQuestion=incoming;
+        smartAnswer=smart744AnswerFor(decision);
+        smart73AskStatus=decision.id==='__clarify__'?'clarify':decision.id==='__unsupported__'?'unknown':null;
+        smartSemanticLastRanking={source:decision.source,reason:decision.reason,decision:decision.id,candidates:[],evidence:decision.evidence||null};
+        smartSemanticSource='verified-policy';
+        smartSemanticState='ready';
+        smartSemanticMessage=smartAnswer?'Verified registry and object/action evidence':smart73AskStatus==='clarify'?'Please clarify the requested operation':'No verified resortOS guide for that request';
+        // Clear context after a refusal. A cross-role change cannot reuse it.
+        smart744LastVerified=smartAnswer?{id:decision.id,role,employeeId:String(employee()?.id||'')}:null;
+        smart744Transcript.push({question:incoming,status:smartAnswer?(smartAnswer.restricted?'restricted':'verified'):smart73AskStatus,id:smartAnswer?.verifiedCapability||null,role});
+        if(smart744Transcript.length>8)smart744Transcript=smart744Transcript.slice(-8);
+        smartView='ask';helpSelected='';helpPanelLibrary=false;helpRenderRoot();
+        document.querySelector('.smart-answer-main')?.scrollIntoView({block:'nearest'});
+    }
+    function smartAnswerMarkup() {
+        const result=smartAnswer;
+        const verified=result?.intent?.id?smart743ArticleFor(result.intent.id):null;
+        const article=verified&&result?.article?.id===verified.article.id&&result.verifiedCapability===verified.capability.id?result.article:null;
+        if(!article) {
+            const status=smart73AskStatus||'unknown';
+            if(status==='clarify'){
+                const q=smartTypoNormalize(smartQuestion).toLowerCase();
+                const options=[];
+                if(/employee|staff|cashier|user|permission/.test(q))options.push(['Creating employees','How do I create a new employee?'],['Staff permissions','How do I change employee permissions?']);
+                if(/receipt|print|invoice/.test(q))options.push(['Receipt History','How do I reprint a receipt?'],['Receipt Builder','How do I design a receipt template?']);
+                if(/payment|pay|settle|cash/.test(q))options.push(['Record a payment','How do I record a guest payment?'],['Payment problems','Why can’t I complete this payment?']);
+                if(/order|restaurant|table|food/.test(q))options.push(['Create an order','How do I create a restaurant order?'],['Manage tables','How can I manage restaurant tables?']);
+                if(/discount|pwd|senior/.test(q))options.push(['Apply a discount','How do I apply a Senior Citizen discount?']);
+                if(/room|stay/.test(q))options.push(['Room occupancy','How do I see occupied rooms?'],['Room charges','How do I add an additional guest charge?']);
+                const buttons=options.slice(0,4).map(([label,question])=>`<button type="button" class="smart-btn" data-action="help-smart-question" data-id="${esc(question)}">${esc(label)} →</button>`).join('');
+                return `<div class="smart-fallback" role="status"><strong>Which task would you like help with first?</strong><p>Your question could refer to multiple resortOS actions. Please select a topic below or describe the screen you're using. SmartHelp will not change any records automatically.</p><div class="smart-answer-actions">${buttons}</div><button class="smart-btn smart-primary" data-action="help-smart-support">Ask Support & Issues</button></div>`;
+            }
+            return `<div class="smart-fallback" role="status"><strong>No verified resortOS procedure found.</strong><p>I cannot confirm that this feature is available or safely provide steps for it. I will not substitute an unrelated workflow. Please browse Help Articles or ask an administrator through Support & Issues.</p><button class="smart-btn smart-primary" data-action="help-smart-support">Ask Support & Issues</button></div>`;
+        }
+        const intent=result.intent,restricted=!!result.restricted;
+        const interpreted=smartTypoNormalize(smartQuestion);
+        const correctionNote=interpreted.toLowerCase()!==smartQuestion.toLowerCase() ? `<div class="smart-spelling-note">Interpreted your question as: <strong>${esc(interpreted)}</strong></div>` : '';
+        const otherWorkspace=!restricted && article.role!==role;
+        const workspaceName=article.role==='admin'?'Admin':HELP_ROLES[article.role];
+        const workspaceAction=otherWorkspace?`<button type="button" class="smart-btn smart-primary" data-action="help-smart-workspace" data-id="${esc(article.role)}">Switch to ${esc(workspaceName)} Dashboard →</button>`:'';
+        const workspaceNote=otherWorkspace?`<div class="smart-answer-note"><strong>Your account is authorized.</strong> You're currently viewing the ${esc(HELP_ROLES[role])} dashboard. Switch to the ${esc(workspaceName)} dashboard to use these controls. SmartHelp will keep your question open and protect unsaved work.</div>`:'';
+        const related=[]; // Do not surface unverified neighboring operational guides.
+        const preferredGuide=intent?.guides?.[role]||intent?.guide;
+        const guided=!restricted&&smartGuideForArticle(article); // Only the matching approved article may launch a guide.
+        if(restricted){
+            const required=article.role==='admin'?'Administrator':article.role==='frontdesk'?'Front Desk employee':'Restaurant employee';
+            return `${correctionNote}<section class="smart-answer-main" aria-label="Permission-aware answer"><div class="smart-answer-label">RESORTOS TASK · RESTRICTED TO ${esc(required.toUpperCase())}</div><h3>${esc(article.title)}</h3><p>This operation is documented, but its instructions are available only to employees with the required workspace access.</p><div class="smart-answer-note"><strong>Access required:</strong> This task is handled by an authorized ${esc(required)}. Your signed-in employee account does not have ${esc(required)} access. Ask an authorized manager for assistance.</div><div class="smart-answer-actions"><button class="smart-btn smart-primary" data-action="help-smart-support">Ask Support & Issues</button></div></section>`;
+        }
+        return `${correctionNote}<section class="smart-answer-main" aria-label="Suggested answer"><div class="smart-answer-label">${result.source==='semantic'?'SEMANTIC TASK MATCH':intent?'MATCHED TASK':'BEST ARTICLE MATCH'} · ${esc(HELP_CATEGORIES[article.category])}</div><h3>${esc(article.title)}</h3><p>${esc(article.summary)}</p><ol class="smart-answer-steps">${article.steps.slice(0,4).map(step=>`<li>${esc(step)}</li>`).join('')}</ol>${article.steps.length>4?'<small>More details are available in the full article.</small>':''}${article.note?`<div class="smart-answer-note">${esc(article.note)}</div>`:''}${workspaceNote}<div class="smart-answer-actions"><button type="button" class="smart-btn${otherWorkspace?'':' smart-primary'}" data-action="help-article" data-id="${esc(article.id)}">Read full instructions →</button>${workspaceAction}${!otherWorkspace&&article.routes.find(routeAllowed)?`<button type="button" class="smart-btn" data-action="help-go" data-id="${esc(article.routes.find(routeAllowed))}">Open ${esc(helpNavName(article.routes.find(routeAllowed)))}</button>`:''}</div>${guided?`<div class="smart-answer-guide"><strong>Want interactive guidance?</strong>${smartGuidePanelButtons(guided.id)}</div>`:``}</section>${related.length?`<section class="smart-related"><h4>Related help</h4>${related.map(x=>smartTopicMarkup(x.article)).join('')}</section>`:''}<div class="smart-answer-foot">Based on verified resortOS instructions. For uncertain results, verify records before retrying.</div>`;
+    }
+    function smartAskPanelMarkup(tabs){
+        const answered=!!smartQuestion;
+        const suggested={
+            foryou:role==='admin'?[
+                ['Create an employee','How do I create a new employee?'],
+                ['Configure payment methods','How do I configure payment methods?'],
+                ['Edit receipt layout','How do I design a receipt template?']
+            ]:role==='restaurant'?[
+                ['Create a table order','How do I create a restaurant order?'],
+                ['Apply a senior discount','How do I apply a Senior Citizen discount?'],
+                ['Post an order to a room','How do I post a restaurant order to a guest room?']
+            ]:[
+                ['Record an outstanding payment','How do I record a guest payment?'],
+                ['Find a previous receipt','Where can I reprint a previous receipt?'],
+                ['Add a guest charge','How do I add an additional guest charge?']
+            ],
+            staff:[
+                ['Add a new employee','How do I create a new employee?'],
+                ['Change department access','How do I change employee permissions?'],
+                ['Department access rules','Can I give an employee access to both departments?']
+            ],
+            payments:[
+                ['Fix a payment problem','Why can’t I complete this payment?'],
+                ['Reprint a receipt','Where can I reprint a previous receipt?'],
+                ['Record a guest payment','How do I record a guest payment?']
+            ],
+            restaurant:[
+                ['Create an order','How do I create a restaurant order?'],
+                role==='restaurant'?['Apply a discount','How do I apply a Senior Citizen discount?']:['View restaurant tables','How do I view restaurant tables?'],
+                ['Post bill to room','How do I post a restaurant order to a guest room?']
+            ],
+            settings:[
+                ['Change receipt design','How do I design a receipt template?'],
+                ['Set up payment methods','How do I configure payment methods?'],
+                ['Manage the restaurant menu','How do I manage restaurant menu items?']
+            ]
+        };
+        const categories=[['foryou','For you'],['staff','Staff'],['payments','Payments'],['restaurant','Restaurant'],['settings','Settings']];
+        const current=categories.some(([key])=>key===smartAskCategory)?smartAskCategory:'foryou';
+        const composer=`<form id="smarthelp-question-form" class="smart-ask-composer" aria-label="Ask a resortOS question"><label for="smart-question-ask">${answered?'Ask a follow-up':'Your question'}</label><div class="smart-ask-entry"><textarea id="smart-question-ask" name="q" data-smart-search="ask" rows="2" maxlength="240" required autocomplete="off" placeholder="${answered?'Ask a follow-up question...':'e.g. How do I add a new employee?'}">${esc(smartAskDraft)}</textarea><div class="smart-ask-entry-foot"><span>Enter to ask <span aria-hidden="true">·</span> Shift + Enter for new line</span><button type="submit" aria-label="Send question" title="Send question"><span aria-hidden="true">➜</span></button></div></div></form>`;
+        const empty=`<div class="smart-ask-welcome"><div class="smart-ask-orb" aria-hidden="true">✦</div><div class="smart-ask-eyebrow"><span class="smart-status-dot"></span> RESORTOS ASSISTANT</div><h2>How can I help?</h2><p>From everyday tasks to tricky errors, find reliable answers and step-by-step guidance.</p><div class="smart-ask-context"><span aria-hidden="true">◈</span><span>Viewing ${esc(HELP_ROLES[role])} workspace</span></div></div>${composer}<section class="smart-ask-actions" aria-label="Help shortcuts"><div class="smart-ask-section-title"><h3>Or jump right in</h3></div><div class="smart-ask-action-grid"><button type="button" data-action="help-smart-tab" data-id="guides"><span class="smart-action-symbol">↗</span><span><strong>Guide me</strong><small>Step by step</small></span></button><button type="button" data-action="help-explore-start"><span class="smart-action-symbol">◇</span><span><strong>Explore page</strong><small>See what does what</small></span></button><button type="button" data-action="help-smart-tab" data-id="troubleshoot"><span class="smart-action-symbol">✳</span><span><strong>Fix an issue</strong><small>Find a solution</small></span></button></div></section><section class="smart-ask-suggestions" aria-label="Example questions"><div class="smart-ask-section-title"><h3>Explore questions</h3><span>Choose a topic</span></div><div class="smart-ask-category-row" role="group" aria-label="Question topics">${categories.map(([key,label])=>`<button type="button" data-action="help-smart-prompt-category" data-id="${key}" class="${current===key?'active':''}" aria-pressed="${current===key}">${label}</button>`).join('')}</div><div class="smart-ask-prompt-list">${suggested[current].map(([title,question])=>`<button type="button" data-action="help-smart-question" data-id="${esc(question)}"><span>${esc(title)}</span><span class="smart-prompt-arrow" aria-hidden="true">↗</span></button>`).join('')}</div></section>`;
+        const priorTurns=smart744Transcript.slice(0,-1).map(turn=>`<div class="smart-ask-message-user"><span class="smart-ask-speaker">YOU · EARLIER</span><div class="smart-question-bubble">${esc(turn.question)}</div></div><div class="smart-fallback" role="note"><small>SmartHelp: ${esc(turn.status==='verified'?'Registry-verified answer':turn.status==='restricted'?'Restricted operation':turn.status==='clarify'?'Clarification requested':'No verified procedure')}</small></div>`).join('');
+        const chat=`<div class="smart-ask-chat-head"><div class="smart-status-dot"></div><div><h2>SmartHelp conversation</h2><p>Verified instructions for resortOS</p></div><button type="button" data-action="help-smart-reset" class="smart-ask-new" title="Start a new question">New question <span aria-hidden="true">＋</span></button></div><section class="smart-ask-thread" aria-label="SmartHelp conversation">${priorTurns}<div class="smart-ask-message-user"><span class="smart-ask-speaker">YOU</span><div class="smart-question-bubble">${esc(smartQuestion)}</div></div><div class="smart-ask-message-assistant"><div class="smart-ask-assistant-label"><span class="smart-ask-mini-orb">✦</span><strong>SmartHelp</strong><span>Verified guidance</span></div>${smartAnswerMarkup()}</div></section>${smartSemanticStatusMarkup()}${composer}<div class="smart-ask-after-actions"><button type="button" data-action="help-smart-tab" data-id="guides">↗ Browse guides</button><button type="button" data-action="help-smart-tab" data-id="articles">▤ Help articles</button></div>`;
+        return `<div class="smart-ask-shell ${answered?'smart-ask-answered':'smart-ask-empty'}">${answered?chat:empty}</div>`;
+    }
+    function smart2NavMarkup(){
+        const tabs=[['home','⌂','Home'],['ask','✦','Ask'],['guides','↗','Guides'],['library','▤','Library']];
+        return `<nav class="smart2-nav" aria-label="SmartHelp primary navigation">${tabs.map(([id,icon,label])=>`<button type="button" data-action="help-smart-tab" data-id="${id}" class="${smartView===id?'active':''}" ${smartView===id?'aria-current="page"':''}><span aria-hidden="true">${icon}</span><strong>${label}</strong></button>`).join('')}</nav>`;
+    }
+    function smart2LibraryMarkup(){
+        const items=HELP_ARTICLES.filter(a=>hasAccess(a.role));
+        const counts={articles:items.length,fixes:items.filter(a=>a.category==='fix').length,recent:smartRecent.length};
+        const header=`<div class="smart2-screen-title"><span class="smart2-eyebrow">KNOWLEDGE CENTER</span><h2>Find trusted answers</h2><p>Everything your team needs, organized in one place.</p></div><div class="smart2-segments" role="group" aria-label="Library sections">${[['articles','Articles'],['fixes','Troubleshoot'],['recent','Recently read']].map(([id,label])=>`<button type="button" data-action="help-smart-library" data-id="${id}" class="${smartLibrarySection===id?'active':''}" aria-pressed="${smartLibrarySection===id}">${label}</button>`).join('')}</div>`;
+        if(smartLibrarySection==='fixes')return header+smartTroubleMarkup();
+        if(smartLibrarySection==='recent'){
+            const recent=smartRecent.map(helpAllowed).filter(Boolean);
+            return header+`<div class="smart2-list-heading"><strong>Recently opened</strong><span>${recent.length} articles</span></div>${recent.length?recent.map(smartTopicMarkup).join(''):'<div class="smart2-empty">Articles you read will appear here for quick access.</div>'}`;
+        }
+        const categoryArticles=items.filter(a=>(helpCategory==='all'||a.category===helpCategory)&& (a.role===role||hasAccess(a.role)));
+        return header+`<div class="smart2-library-search"><label for="smart-article-filter">Search the knowledge base</label><div class="smart2-input-wrap"><span aria-hidden="true">⌕</span><input type="search" id="smart-article-filter" data-smart-search="articles" value="${esc(helpQuery)}" placeholder="Search articles, tasks, or error messages" maxlength="240"></div></div><div class="smart-categories" role="group" aria-label="Filter help topics">${[['all','All'],...Object.entries(HELP_CATEGORIES)].map(([key,label])=>`<button type="button" class="${helpCategory===key?'active':''}" data-action="help-category" data-id="${key}">${esc(label)}</button>`).join('')}</div><div class="smart2-list-heading"><strong id="smart-result-count">${helpQuery?'Search results':'Browse articles'}</strong><span>${categoryArticles.length} available</span></div><div id="smart-article-results" class="smart2-articles">${helpQuery?smartSearchMarkup(helpQuery,helpCategory):categoryArticles.map(smartTopicMarkup).join('')}</div>`;
+    }
+    function smartPanelContent() {
+        const context=helpCurrentContext(),articles=smartContextArticles();
+        if(helpSelected)return helpArticleMarkup(helpSelected,true);
+        if(smartView==='diagnostics' && smartSemanticDebugEnabled())return smartSemanticDiagnosticsMarkup();
+        if(smartView==='ask')return smartAskPanelMarkup('');
+        if(smartView==='guides')return smartGuideListMarkup();
+        if(smartView==='library')return smart2LibraryMarkup();
+        const paused=smartGuidePaused||smartGuideLoad();
+        const recent=smartRecent.map(helpAllowed).filter(Boolean).slice(0,2);
+        const inModal=!!document.querySelector('#modal-root .modal');
+        return `<div class="smart2-home"><section class="smart2-hero"><div class="smart2-hero-top"><span class="smart2-hero-status"><span class="smart-status-dot"></span>${esc(HELP_ROLES[role])} workspace</span><span class="smart2-hero-spark" aria-hidden="true">✦</span></div><h2>Help, right when<br>you need it.</h2><p>Ask a question, find a walkthrough, or understand the screen you're on.</p><form id="smarthelp-question-form" class="smart2-hero-search"><label for="smart-question-home" class="smart2-sr-only">Ask SmartHelp a question</label><input id="smart-question-home" name="q" data-smart-search="home" type="search" placeholder="What do you need help with?" autocomplete="off" maxlength="240" value="${esc(helpQuery)}" required><button type="submit" title="Ask SmartHelp" aria-label="Send question">➜</button></form></section><div id="smart-live-results" class="smart-live-results" ${helpQuery?'':'hidden'}>${helpQuery?smartSearchMarkup(helpQuery):''}</div>${paused?`<section class="smart2-notice"><div><strong>Continue where you left off</strong><span>${esc(smartGuides.find(g=>g.id===paused.id)?.title||'Interactive guide')}</span></div><button type="button" data-action="help-adaptive-resume">Resume →</button></section>`:''}${smartLastError&&smartLastError.role===role&&Date.now()-smartLastError.at<1200000?`<button type="button" class="smart2-alert" data-action="help-smart-tab" data-id="troubleshoot">An issue was recently reported · Review troubleshooting →</button>`:''}<section class="smart2-home-section"><div class="smart2-list-heading"><strong>What would you like to do?</strong></div><div class="smart2-action-grid"><button type="button" data-action="help-smart-tab" data-id="guides"><span class="smart2-action-icon">↗</span><strong>Guide me</strong><small>Step-by-step help</small></button><button type="button" data-action="help-explore-start"><span class="smart2-action-icon">◇</span><strong>Explore page</strong><small>Understand controls</small></button><button type="button" data-action="help-smart-tab" data-id="troubleshoot"><span class="smart2-action-icon">✳</span><strong>Fix a problem</strong><small>Resolve common errors</small></button><button type="button" data-action="help-smart-tab" data-id="articles"><span class="smart2-action-icon">▤</span><strong>Browse Library</strong><small>Verified knowledge</small></button></div></section><div class="smart2-home-lower"><section class="smart2-home-section"><div class="smart2-list-heading"><strong>Relevant to your screen</strong><span>${inModal?'Open window':'Current page'}</span></div><div class="smart2-context-card"><div><span class="smart2-eyebrow">YOU ARE VIEWING</span><strong>${esc(context.heading)}</strong></div><button type="button" data-action="help-explore-start" title="Explore screen controls" aria-label="Explore controls on this screen">↗</button></div><div class="smart2-recommendations">${articles.slice(0,2).map(smartTopicMarkup).join('')}</div></section><section class="smart2-home-section smart2-continue"><div class="smart2-list-heading"><strong>Pick up easily</strong><button type="button" data-action="help-smart-tab" data-id="activity">View history →</button></div>${recent.length?recent.map(a=>`<button type="button" class="smart2-recent-item" data-action="help-article" data-id="${esc(a.id)}"><span class="smart2-recent-icon">◷</span><span>${esc(a.title)}</span><span aria-hidden="true">↗</span></button>`).join(''):'<div class="smart2-empty">Recently read articles appear here.</div>'}<button type="button" class="smart2-start-guide" data-action="help-restart"><span aria-hidden="true">◎</span> New to resortOS? Start the guided tour <span aria-hidden="true">→</span></button></section></div></div>`;
+    }
+
+    const smartGuides = [
+        { id:'fd-rooms',role:'frontdesk',title:'Find rooms and occupancy',destination:'rooms' },
+        { id:'fd-stays',role:'frontdesk',title:'Find guest stays',destination:'stays' },
+        { id:'fd-charges',role:'frontdesk',title:'Open additional and room charges',destination:'charges' },
+        { id:'fd-checkout',role:'frontdesk',title:'Open guest checkout',destination:'checkout' },
+        { id:'fd-receipts',role:'frontdesk',title:'Find and reprint a receipt',destination:'receipts' },
+        { id:'fd-support',role:'frontdesk',title:'Find Support & Issues',destination:'tickets' },
+        { id:'rs-tables',role:'restaurant',title:'Open restaurant tables',destination:'tables' },
+        { id:'rs-orders',role:'restaurant',title:'Review restaurant orders',destination:'orders' },
+        { id:'rs-neworder',role:'restaurant',title:'Start a restaurant order',destination:'neworder' },
+        { id:'rs-roomcharges',role:'restaurant',title:'Review room-posted orders',destination:'roomcharges' },
+        { id:'rs-receipts',role:'restaurant',title:'Find and reprint restaurant receipts',destination:'receipts' },
+        { id:'rs-support',role:'restaurant',title:'Find Support & Issues',destination:'tickets' },
+        { id:'ad-employees',role:'admin',title:'Open Add Employee form',destination:'users',action:'feature-edit-employee',modal:'add employee' },
+        { id:'ad-users',role:'admin',title:'Manage employee permissions',destination:'users' },
+        { id:'ad-menu',role:'admin',title:'Manage the Restaurant Menu',destination:'menu' },
+        { id:'ad-methods',role:'admin',title:'Configure payment methods',destination:'payments' },
+        { id:'ad-discounts',role:'admin',title:'Find Discount Management',destination:'discounts' },
+        { id:'ad-builder',role:'admin',title:'Find Receipt Builder',destination:'receiptbuilder' },
+        { id:'ad-receiptsettings',role:'admin',title:'Find Receipt Settings',destination:'receiptsettings' },
+        { id:'ad-receipts',role:'admin',title:'Find Receipt History',destination:'receipts' },
+        { id:'ad-audit',role:'admin',title:'Open Audit Log',destination:'audit' },
+        { id:'ad-support',role:'admin',title:'Open the support queue',destination:'tickets' },
+        { id:'op-fd-register',role:'frontdesk',title:'Register a guest stay · complete task',destination:'stays',operation:'stay' },
+        { id:'op-fd-service',role:'frontdesk',title:'Post an additional service charge · complete task',destination:'charges',operation:'service' },
+        { id:'op-fd-payment',role:'frontdesk',title:'Record an outstanding payment · complete task',destination:'checkout',operation:'frontdesk-payment' },
+        { id:'op-fd-reprint',role:'frontdesk',title:'View and reprint an existing receipt',destination:'receipts',operation:'receipt' },
+        { id:'op-rs-order',role:'restaurant',title:'Create a table order · complete task',destination:'neworder',operation:'order' },
+        { id:'op-rs-payment',role:'restaurant',title:'Settle a restaurant bill · complete task',destination:'tables',operation:'restaurant-payment' },
+        { id:'op-rs-room',role:'restaurant',title:'Post an order to a guest room · complete task',destination:'tables',operation:'post-room' },
+        { id:'op-rs-discount',role:'restaurant',title:'Apply an eligible restaurant discount · complete task',destination:'orders',operation:'discount' },
+        { id:'op-rs-reprint',role:'restaurant',title:'View and reprint restaurant receipt',destination:'receipts',operation:'receipt' },
+        { id:'op-ad-employee',role:'admin',title:'Create a staff account · complete task',destination:'users',operation:'employee' },
+        { id:'op-ad-payment-method',role:'admin',title:'Create a payment method · complete task',destination:'payments',operation:'method' },
+        { id:'op-ad-promotion',role:'admin',title:'Configure a promotion · complete task',destination:'discounts',operation:'promotion' },
+        { id:'op-ad-receipt-settings',role:'admin',title:'Save receipt branding settings · complete task',destination:'receiptsettings',operation:'receipt-settings' },
+        { id:'op-fd-ticket',role:'frontdesk',title:'Create a support request · complete task',destination:'tickets',operation:'ticket' },
+        { id:'op-rs-ticket',role:'restaurant',title:'Create a support request · complete task',destination:'tickets',operation:'ticket' }
+    ];
+    const smartOperationCopy = {
+        stay:{intro:'Register a stay for an available room. Review the dates before saving.',working:'Choose an available room and dates, then submit Register Stay. I will verify a new stay exists.'},
+        service:{intro:'Post a requested extra service to an active stay; accommodation charges are not included.',working:'Choose an occupied room, service and quantity or hours. Check the calculated total and post only the correct charge.'},
+        'frontdesk-payment':{intro:'Record money only after it was actually received outside resortOS.',working:'Review the outstanding charges and choose a payment method. Cash can return change; non-cash cannot exceed the due amount. Confirm a real payment only once.'},
+        receipt:{intro:'Open an existing payment receipt. Reprinting must never create another payment.',working:'Choose a paper size and use Open Print Preview if you want to print. Viewing a receipt makes no new charge.'},
+        order:{intro:'Create a table order by adding menu items and selecting a table.',working:'Select one or more menu items, verify the table and quantities, then Save table order. Payment is not part of this step.'},
+        'restaurant-payment':{intro:'Collect an already-due restaurant bill, never a draft order.',working:'Check the total, discounts and payment method; confirm only after payment is received. I verify the actual new payment record.'},
+        'post-room':{intro:'Post a restaurant bill to an active guest room for later Front Desk settlement.',working:'Verify guest authorization and the selected occupied room before confirming the room posting.'},
+        discount:{intro:'Apply only legally eligible discounts after validating the guest and eligible consumption.',working:'Select the eligible discount, verify the beneficiary and purchase details, review the preview, then confirm. Never guess tax eligibility.'},
+        employee:{intro:'Only Admin can create staff accounts. Department access does not grant Admin rights.',working:'Enter a staff name, select operational department access and review permissions before saving. This is a demo identity, not authentication.'},
+        method:{intro:'Configure a shared cash or non-cash payment method.',working:'Enter the method name and classification; only Cash calculates change. Save the new method when correct.'},
+        promotion:{intro:'Create a promotion using eligibility and date rules.',working:'Review the promotion name, percentage, scope and active dates before saving.'},
+        'receipt-settings':{intro:'Edit receipt branding without changing previous recorded transaction amounts.',working:'Review the resort identity, tax-registration status and contact details. Save only accurate business information.'},
+        ticket:{intro:'Create a support request with a clear problem description.',working:'Enter the issue and choose its visibility. Review before submitting the ticket to management.'}
+    };
+    function smartOperationSnapshot(){
+        const ids=kind=>(Array.isArray(data[kind])?data[kind]:[]).map(x=>String(x.id));
+        return {stays:ids('stays'),charges:ids('charges'),orders:ids('orders'),orderUnits:Object.fromEntries((data.orders||[]).map(o=>[String(o.id),(o.items||[]).reduce((n,i)=>n+Number(i.qty||0),0)])),payments:ids('paymentRecords'),discounts:ids('discountEvents'),employees:ids('employees'),methods:ids('paymentMethods'),promotions:ids('promotions'),tickets:ids('tickets'),auditLength:(data.audit||[]).length};
+    }
+    function smartOperationNew(kind, predicate=()=>true){
+        const original=new Set(smartGuide?.snapshot?.[kind]||[]);
+        const store={payments:'paymentRecords',discounts:'discountEvents',methods:'paymentMethods'}[kind]||kind;
+        return (data[store]||[]).find(x=>!original.has(String(x.id))&&predicate(x));
+    }
+    function smartOperationSuccess(kind){
+        const s=smartGuide?.snapshot;
+        if(!s)return false;
+        switch(kind){
+            case 'stay':return !!smartOperationNew('stays');
+            case 'service':return !!smartOperationNew('charges',x=>x.source==='service');
+            case 'frontdesk-payment':return !!smartOperationNew('payments',x=>x.area==='frontdesk');
+            case 'receipt':return false;
+            case 'order':return !!smartOperationNew('orders',x=>x.destination==='table') || (data.orders||[]).some(x=>x.destination==='table'&&x.status==='pending'&&s.orderUnits&&Object.hasOwn(s.orderUnits,String(x.id))&&(x.items||[]).reduce((n,i)=>n+Number(i.qty||0),0)>s.orderUnits[String(x.id)]);
+            case 'restaurant-payment':return !!smartOperationNew('payments',x=>x.area==='restaurant');
+            case 'post-room':return !!smartOperationNew('charges',x=>x.source==='restaurant');
+            case 'discount':return !!smartOperationNew('discounts',x=>!x.reversed);
+            case 'employee':return !!smartOperationNew('employees');
+            case 'method':return !!smartOperationNew('methods');
+            case 'promotion':return !!smartOperationNew('promotions');
+            case 'ticket':return !!smartOperationNew('tickets');
+            case 'receipt-settings':return (data.audit||[]).length>s.auditLength && (data.audit||[]).slice(0,(data.audit||[]).length-s.auditLength).some(x=>/updated receipt branding and tax profile/i.test(x.action||''));
+            default:return false;
+        }
+    }
+    function smartOpTarget(selector,label,message){return {kind:'target',selector,label,message};}
+    function smartOpWorking(op,label){return {kind:'working',label,message:smartOperationCopy[op].working};}
+    function smartOperationState(g){
+        const op=g.operation;
+        if(!op)return null;
+        if(smartOperationSuccess(op))return {kind:'done',message:'The expected result was verified in the resortOS records. No action was performed by SmartHelp.'};
+        const form=document.querySelector('#modal-root .modal form');
+        const has=selector=>!!document.querySelector(selector);
+        if(op==='receipt' && form?.getAttribute('id')==='feature-print-form')return {kind:'done',message:'The existing receipt preview is open. Select the format and print if needed; no payment has been recorded.'};
+        const forms={stay:'stay-form',service:'service-form','frontdesk-payment':'checkout-pay-form',order:'', 'restaurant-payment':'restaurant-pay-form','post-room':'post-table-form',discount:'discount-apply-form',employee:'feature-employee-form',method:'feature-payment-form',promotion:'promotion-form','receipt-settings':'feature-receipt-form',ticket:'ticket-create-form'};
+        if(forms[op]&&has('#'+forms[op]))return smartOpWorking(op,'Review and complete the form');
+        const modal=document.querySelector('#modal-root .modal');
+        if(modal){
+            const selector=op==='restaurant-payment'?'[data-action="table-settle"],[data-action="table-bill"],[data-action="cash-pay"]':op==='post-room'?'[data-action="table-settle"],[data-action="table-bill"],[data-action="choose-post-room"]':op==='discount'?'[data-action="discount-order"]':'';
+            if(selector){
+                const target=modal.querySelector(selector);
+                if(target)return smartOpTarget('[data-action="'+target.dataset.action+'"]'+(target.dataset.id?'[data-id="'+target.dataset.id+'"]':''),'Continue from this dialog','Use the highlighted action after confirming this is the intended order. SmartHelp does not apply discounts or accept payments itself.');
+            }
+            return {kind:'blocked',message:'Another dialog is open. Finish it or close it safely before continuing; unsaved details will not be discarded.'};
+        }
+        if(route!==g.destination)return null;
+        if(op==='stay')return smartOpTarget('[data-action="register-stay"]','Open Register Stay',smartOperationCopy[op].intro);
+        if(op==='service'){
+            if(has('#service-form'))return smartOpWorking(op,'Complete the service charge');
+            if(has('[data-action="charges-tab"][data-id="services"]'))return smartOpTarget('[data-action="charges-tab"][data-id="services"]','Open additional service charges',smartOperationCopy[op].intro);
+            return smartOpTarget('[data-action="nav-addservice"]','Open service charge form',smartOperationCopy[op].intro);
+        }
+        if(op==='frontdesk-payment'){
+            const st=(data.stays||[]).find(x=>x.active&&dueForStay(x.id)>.001);
+            if(!st)return {kind:'blocked',message:'No active stay has an outstanding charge. Record a real charge first; SmartHelp will not invent a payment or guest.'};
+            return smartOpTarget('[data-action="checkout-stay"][data-id="'+st.id+'"]','Review an outstanding stay',smartOperationCopy[op].intro);
+        }
+        if(op==='receipt'){
+            const button=document.querySelector('[data-action="receipt-payment"],[data-action="receipt-order"]');
+            if(!button)return {kind:'blocked',message:'No receipt is available in the current results. Clear the filters or create a genuine payment first.'};
+            return smartOpTarget('[data-action="'+button.dataset.action+'"][data-id="'+button.dataset.id+'"]','Open an existing receipt',smartOperationCopy[op].intro);
+        }
+        if(op==='order')return smartOpWorking(op,'Build and save the restaurant order');
+        if(['restaurant-payment','post-room'].includes(op)){
+            const eligible=(data.orders||[]).find(x=>x.destination==='table'&&x.status==='awaiting_payment');
+            if(!eligible)return {kind:'blocked',message:'No restaurant order is marked Awaiting Payment. Complete a genuine order and mark its table ready before using this guide.'};
+            const button=document.querySelector('[data-action="open-table"][data-id="'+eligible.table+'"]');
+            if(button)return smartOpTarget('[data-action="open-table"][data-id="'+eligible.table+'"]','Open the waiting table',smartOperationCopy[op].intro);
+            return {kind:'blocked',message:'The waiting table cannot currently be found. Clear table filters and try Check again.'};
+        }
+        if(op==='discount'){
+            const eligible=(data.orders||[]).find(x=>canDiscountOrder(x,null)&&['pending','awaiting_payment'].includes(x.status));
+            if(!eligible)return {kind:'blocked',message:'No eligible unpaid restaurant order is available, or discount permission is missing. This guide cannot generate a qualifying purchase.'};
+            const button=document.querySelector('[data-action="view-order"][data-id="'+eligible.id+'"]');
+            if(button)return smartOpTarget('[data-action="view-order"][data-id="'+eligible.id+'"]','Open the eligible order',smartOperationCopy[op].intro);
+            return {kind:'blocked',message:'The order is not in the current results. Clear the order filters and retry.'};
+        }
+        const targets={employee:['[data-action="feature-edit-employee"]','Open Add Employee'],method:['[data-action="feature-edit-payment"]','Open Add Payment Method'],promotion:['[data-action="promotion-new"]','Open Add Promotion'],ticket:['[data-action="ticket-create"]','Open Create Ticket']};
+        if(targets[op])return smartOpTarget(targets[op][0],targets[op][1],smartOperationCopy[op].intro);
+        if(op==='receipt-settings')return smartOpWorking(op,'Review and save receipt settings');
+        return {kind:'blocked',message:'This task is unavailable in the current application state.'};
+    }
+
+    let smartGuide=null, smartGuidePaused=null;
+    function smartGuideKey(){ return 'resortOS-smartguide-progress-v1:'+String(employee()?.id||role); }
+    function smartGuidesForRole(){ return smartGuides.filter(g=>g.role===role && routeAllowed(g.destination)); }
+    function smartGuideForArticle(article){
+        if(!article) return null;
+        const routes=(article.routes||[]).filter(routeAllowed);
+        const direct=smartGuidesForRole().filter(g=>routes.includes(g.destination));
+        if(!direct.length) return null;
+        const wording=(article.title+' '+article.keywords).toLowerCase();
+        const wantsOperation=/\b(how|register|record|create|post|apply|settle|save|reprint|payment|add)\b/i.test(article.title);
+        if(wantsOperation){
+            const matches=[
+                [/employee|staff account/, 'employee'], [/receipt settings|branding/, 'receipt-settings'],
+                [/reprint|receipt history/, 'receipt'], [/payment method/, 'method'],
+                [/promotion/, 'promotion'], [/discount/, 'discount'], [/support ticket|report an issue/, 'ticket'],
+                [/additional (service|charge)|post service/, 'service'], [/register (a )?stay|guest stay/, 'stay'],
+                [/room post|post to room/, 'post-room'], [/restaurant payment|restaurant checkout/, 'restaurant-payment'],
+                [/settle|outstanding payment/, 'frontdesk-payment'], [/new order|create (an )?order/, 'order']
+            ];
+            const op=matches.find(([pattern])=>pattern.test(wording))?.[1];
+            const specific=op&&direct.find(g=>g.operation===op);
+            if(specific)return specific;
+        }
+        // Do not substitute an unrelated task-specific guide just because its page matches.
+        return direct.find(g=>!g.operation&&!g.action)||null;
+    }
+    function smartGuideLoad(){
+        try {
+            const record=JSON.parse(localStorage.getItem(smartGuideKey())||'null');
+            return record && record.role===role && smartGuidesForRole().some(x=>x.id===record.id) ? record : null;
+        } catch {return null;}
+    }
+    function smartGuidePersist(){
+        try {
+            if(smartGuidePaused) localStorage.setItem(smartGuideKey(),JSON.stringify(smartGuidePaused));
+            else localStorage.removeItem(smartGuideKey());
+        } catch {}
+    }
+    function smartGuidePanelButtons(id){
+        return `<div class="smart-guide-actions"><button type="button" class="smart-btn smart-primary" data-action="help-adaptive-start" data-id="${esc(id)}">Show Me Where to Click</button><button type="button" class="smart-btn" data-action="help-adaptive-jump" data-id="${esc(id)}">Take Me There</button></div>`;
+    }
+    function smartGuideListMarkup(){
+        const resumed=smartGuidePaused||smartGuideLoad();
+        const all=smartGuidesForRole();
+        const guides=all.filter(g=>smartGuideSection==='tasks'?!!g.operation:!g.operation);
+        return `<div class="smart2-screen-title"><span class="smart2-eyebrow">INTERACTIVE SUPPORT</span><h2>Guides that work with you</h2><p>Follow highlighted controls or safely navigate to a task.</p></div>${resumed?`<div class="smart-guide-resume"><strong>Paused: ${esc(all.find(g=>g.id===resumed.id)?.title||'Guide')}</strong><button class="smart-btn smart-primary" data-action="help-adaptive-resume">Resume →</button><button class="smart-btn" data-action="help-adaptive-forget">Discard</button></div>`:''}<button type="button" class="smart2-guide-explore" data-action="help-explore-start"><span>◇</span><span><strong>Explore this page</strong><small>Point to controls and get explanations</small></span><span>↗</span></button><div class="smart2-segments" role="group" aria-label="Guide categories"><button type="button" data-action="help-guide-section" data-id="tasks" class="${smartGuideSection==='tasks'?'active':''}" aria-pressed="${smartGuideSection==='tasks'}">Complete a task (${all.filter(g=>g.operation).length})</button><button type="button" data-action="help-guide-section" data-id="find" class="${smartGuideSection==='find'?'active':''}" aria-pressed="${smartGuideSection==='find'}">Find a feature (${all.filter(g=>!g.operation).length})</button></div><div class="smart2-library-search"><label for="smart-guide-filter">Find a walkthrough</label><div class="smart2-input-wrap"><span aria-hidden="true">⌕</span><input type="search" id="smart-guide-filter" placeholder="Search guides..." autocomplete="off"></div></div><div class="smart2-list-heading"><strong>${smartGuideSection==='tasks'?'Operational walkthroughs':'Navigation walkthroughs'}</strong><span id="smart-guide-count">${guides.length} guides</span></div><div class="smart2-guides">${guides.map(g=>`<article class="smart2-guide-card" data-guide-entry="${esc(g.title+' '+helpNavName(g.destination))}"><div class="smart2-guide-icon">${g.operation?'✓':'↗'}</div><div class="smart2-guide-body"><strong>${esc(g.title.replace(' · complete task',''))}</strong><small>${esc(helpNavName(g.destination))} · ${g.operation?'Checks successful completion':'Guides real navigation'}</small>${smartGuidePanelButtons(g.id)}</div></article>`).join('')}</div><div class="smart2-empty" id="smart-guide-no-results" hidden>No matching guide. Try a different task or ask SmartHelp.</div><p class="smart-guide-note">SmartHelp never confirms a payment, discount, or permission change for you. Actions and final confirmation stay under your control.</p>`;
+    }
+    function smartGuideStart(id, mode='show'){
+        const guide=smartGuidesForRole().find(g=>g.id===id);
+        if(!guide){toast('This guide is not available for this dashboard.',true);return;}
+        if(smartNavigationIsUnsafe(guide.destination)) return;
+        const origin=route;
+        if(mode==='jump'){
+            if(route!==guide.destination){
+                helpMode='closed';helpRenderRoot();
+                go(guide.destination,guide.destination==='neworder' && route==='neworder');
+            }
+        }
+        smartGuide={id,role,origin,mode,status:'active',snapshot:guide.operation?smartOperationSnapshot():null};
+        smartGuidePaused=null;smartGuidePersist();
+        helpSelected='';helpMode='adaptive';
+        smartGuideSync();
+    }
+    function smartGuideState(g){
+        if(!g||g.role!==role) return {kind:'error',message:'This guide is not available with your current permissions.'};
+        if(!routeAllowed(g.destination)) return {kind:'error',message:'This destination is no longer accessible.'};
+        if(g.operation){const operational=smartOperationState(g);if(operational)return operational;}
+        const modal=document.querySelector('#modal-root .modal');
+        if(modal){
+            const name=String(modal.querySelector('.modal-head h2')?.textContent||'').toLowerCase();
+            if(g.modal && route===g.destination && name.includes(g.modal))return {kind:'done',message:'The form is open. Complete and save it yourself after reviewing the required fields.'};
+            return {kind:'blocked',message:'A dialog is open. Finish or close it before continuing the guide.'};
+        }
+        if(route===g.destination){
+            if(g.action){
+                return {kind:'target',selector:`[data-action="${g.action}"]`,label:'Open '+(g.modal==='add employee'?'Add Employee':'the next form'),message:'Select the highlighted button. SmartHelp will verify that the form opens, but it will not save anything.'};
+            }
+            return {kind:'done',message:'You reached the correct page. Follow its existing controls or read the related Help article for the remaining task.'};
+        }
+        if(role==='admin' && g.destination!=='audit' && g.destination!=='tickets' && g.destination!=='dashboard'){
+            if(route!=='system')return {kind:'target',selector:'[data-nav="system"]',label:'Open System Management',message:'Click the highlighted System Management navigation entry.'};
+            return {kind:'target',selector:`[data-nav="${g.destination}"]`,label:'Open '+helpNavName(g.destination),message:'Click the highlighted management tile.'};
+        }
+        const nav=document.querySelector(`[data-nav="${g.destination}"]`);
+        if(nav)return {kind:'target',selector:`[data-nav="${g.destination}"]`,label:'Open '+helpNavName(g.destination),message:'Click the highlighted sidebar navigation entry.'};
+        if(route!=='dashboard')return {kind:'target',selector:'[data-nav="dashboard"]',label:'Open Dashboard',message:'Click Dashboard to find the appropriate shortcut. Your progress will be preserved.'};
+        return {kind:'target',selector:`[data-action="nav-${g.destination}"]`,label:'Find '+helpNavName(g.destination),message:'Click the highlighted dashboard shortcut.'};
+    }
+    function smartGuideInlineAnswer(question){
+        if(!smartGuide || helpMode!=='adaptive')return;
+        const text=String(question||'').trim().slice(0,180);
+        if(!text)return;
+        const decision=smart744Policy(text,null);
+        const verified=smart744AnswerFor(decision);
+        smartGuide.inlineQuestion=text;
+        smartGuide.inlineResult=verified&&!verified.restricted?verified.article.id:'';
+        smartGuideSync();
+    }
+    function smartGuideInlineRead(){
+        const article=helpAllowed(smartGuide?.inlineResult);
+        smartGuidePause();
+        if(article)helpOpen(article.id);else helpOpen();
+    }
+    function smartGuidePause(){
+        if(!smartGuide)return;
+        smartGuidePaused={id:smartGuide.id,role:smartGuide.role,origin:smartGuide.origin,snapshot:smartGuide.snapshot||null};
+        smartGuide=null;smartGuidePersist();helpMode='closed';helpRenderRoot();
+        toast('Guide paused. Resume it from SmartHelp → Guides.');
+    }
+    function smartGuideExit(){smartGuide=null;smartGuidePaused=null;smartGuidePersist();helpMode='closed';helpRenderRoot();}
+    function smartGuideResume(){
+        const state=smartGuidePaused||smartGuideLoad();
+        if(!state)return;
+        if(!smartGuidesForRole().some(g=>g.id===state.id)){toast('This guide is no longer available for this dashboard.',true);return;}
+        smartGuide={id:state.id,role,origin:state.origin,status:'active',mode:'show',snapshot:state.snapshot||null};
+        smartGuidePaused=null;smartGuidePersist();helpMode='adaptive';smartGuideSync();
+    }
+    function smartGuideSync(){
+        if(helpMode!=='adaptive'||!smartGuide)return;
+        const guide=smartGuidesForRole().find(g=>g.id===smartGuide.id);
+        const state=smartGuideState(guide);
+        if(state.kind==='done')smartGuide.status='done';
+        helpRenderRoot();
+    }
+    function smartGuidePosition(){
+        if(helpMode!=='adaptive'||!smartGuide)return;
+        const root=document.getElementById('help-root');
+        const state=smartGuideState(smartGuidesForRole().find(g=>g.id===smartGuide.id));
+        if(state.kind!=='target'||!root?.querySelector('.smart-adaptive-focus'))return;
+        const target=document.querySelector(state.selector);
+        if(!target||!target.getClientRects().length)return;
+        const r=target.getBoundingClientRect(), vw=window.innerWidth,vh=window.innerHeight,pad=6;
+        const x=Math.max(0,r.left-pad),y=Math.max(0,r.top-pad),right=Math.min(vw,r.right+pad),bottom=Math.min(vh,r.bottom+pad);
+        if(right<=x||bottom<=y)return;
+        const rects=[{top:0,left:0,width:vw,height:y},{top:bottom,left:0,width:vw,height:vh-bottom},{top:y,left:0,width:x,height:bottom-y},{top:y,left:right,width:vw-right,height:bottom-y}];
+        root.querySelectorAll('.smart-adaptive-curtain').forEach((el,i)=>Object.assign(el.style,Object.fromEntries(Object.entries(rects[i]).map(([k,v])=>[k,v+'px']))));
+        Object.assign(root.querySelector('.smart-adaptive-focus').style,{left:x+'px',top:y+'px',width:right-x+'px',height:bottom-y+'px'});
+        const card=root.querySelector('.smart-adaptive-card');
+        if(card){
+            const width=Math.min(370,vw-24),height=card.offsetHeight||250;
+            const left=Math.max(12,Math.min(x,vw-width-12));
+            const top=bottom+height+12<vh?bottom+12:y-height-12>12?y-height-12:Math.max(12,Math.min(vh-height-12,bottom+12));
+            Object.assign(card.style,{width:width+'px',top:top+'px',left:left+'px'});
+        }
+    }
+    function smartGuideInlineMarkup(){return `<div class="smart-adaptive-inline"><form id="smart-adaptive-question-form"><label for="smart-adaptive-question">Question about this step?</label><div><input id="smart-adaptive-question" name="question" maxlength="180" autocomplete="off" placeholder="Ask about the current task..."><button type="submit">Ask</button></div></form>${smartGuide.inlineQuestion?`<div class="smart-adaptive-answer">${smartGuide.inlineResult?(()=>{const a=helpAllowed(smartGuide.inlineResult);return a?`<strong>${esc(a.title)}</strong><p>${esc(a.summary)}</p><button type="button" data-action="help-adaptive-inline-read">Read full answer</button>`:'<p>No verified answer is available for that question. You can pause the guide and ask Support & Issues.</p>'})():'<p>I could not find a reliable answer. Try rephrasing, or pause the guide to contact Support & Issues.</p>'}</div>`:''}</div>`;}
+    function smartGuideRender(){
+        const guide=smartGuidesForRole().find(g=>g.id===smartGuide?.id);
+        const state=smartGuideState(guide),root=document.getElementById('help-root');
+        if(!root)return;
+        if(state.kind==='target'){
+            if(window.innerWidth<=780&&state.selector.includes('data-nav')&&!mobile){mobile=true;render();}
+            const target=document.querySelector(state.selector);
+            if(!target||target.disabled||!target.getClientRects().length){
+                root.innerHTML=`<section class="smart-adaptive-message" role="status"><strong>Guide needs your attention</strong><p>The next control is not available. Your progress is preserved. Close any overlapping panel or return to the expected screen.</p><div class="smart-guide-actions"><button class="smart-btn" data-action="help-adaptive-pause">Pause guide</button><button class="smart-btn" data-action="help-adaptive-exit">Exit</button></div></section>`;
+                return;
+            }
+            if(target.getBoundingClientRect().top<0||target.getBoundingClientRect().bottom>window.innerHeight) target.scrollIntoView({block:'nearest'});
+            root.innerHTML=`<div class="smart-adaptive-overlay" role="region" aria-label="Live navigation guide"><div class="smart-adaptive-curtain"></div><div class="smart-adaptive-curtain"></div><div class="smart-adaptive-curtain"></div><div class="smart-adaptive-curtain"></div><div class="smart-adaptive-focus" aria-hidden="true"></div><section class="smart-adaptive-card" aria-live="polite"><div class="smart-adaptive-head"><span>SMARTHELP · LIVE GUIDE</span><button type="button" data-action="help-adaptive-exit" aria-label="Exit guide">×</button></div><strong>${esc(guide.title)}</strong><h3>${esc(state.label)}</h3><p>${esc(state.message)}</p><small>Continue by clicking the real highlighted control. Navigation is verified from the current page.</small>${smartGuideInlineMarkup()}<div class="smart-adaptive-actions"><button type="button" data-action="help-adaptive-pause">Pause</button><button type="button" data-action="help-adaptive-exit">Exit</button></div></section></div>`;
+            smartGuidePosition();requestAnimationFrame(smartGuidePosition);
+            return;
+        }
+        if(state.kind==='working'){
+            root.innerHTML=`<section class="smart-operation-card" role="status"><div class="smart-adaptive-message-head"><span>SMARTHELP · VERIFIED TASK</span><button type="button" data-action="help-adaptive-pause" aria-label="Pause guide">×</button></div><strong>${esc(guide.title)}</strong><h3>${esc(state.label||'Complete this task')}</h3><p>${esc(state.message)}</p><div class="smart-operation-warning">You control all entries and confirmations. SmartHelp verifies the result but never submits this form.</div>${smartGuide.lastError?`${smartRecoveryMarkup(smartGuide.lastError,true)}`:''}${smartGuideInlineMarkup()}<div class="smart-operation-actions"><button data-action="help-adaptive-check">Check result</button><button data-action="help-adaptive-pause">Pause</button><button data-action="help-adaptive-exit">Exit</button></div></section>`;
+            return;
+        }
+        root.innerHTML=`<section class="smart-adaptive-message" role="status"><div class="smart-adaptive-message-head"><span>${state.kind==='done'?'✓ TASK VERIFIED':'GUIDE NEEDS ATTENTION'}</span><button type="button" data-action="help-adaptive-exit" aria-label="Exit guide">×</button></div><h3>${esc(guide?.title||'SmartHelp')}</h3><p>${esc(state.message)}</p><div class="smart-guide-actions">${state.kind==='done'?`<button class="smart-btn smart-primary" data-action="help-adaptive-complete">Finish guide</button><button class="smart-btn" data-action="help-adaptive-article">Read instructions</button>`:`<button class="smart-btn" data-action="help-adaptive-check">Check again</button><button class="smart-btn" data-action="help-adaptive-pause">Pause guide</button><button class="smart-btn" data-action="help-smart-support">Ask Support</button>`}</div></section>`;
+    }
+    function smartGuideReadArticle(){
+        const guide=smartGuidesForRole().find(g=>g.id===smartGuide?.id);
+        const article=guide && HELP_ARTICLES.find(a=>a.role===role&&a.routes.includes(guide.destination));
+        smartGuideExit();
+        if(article)helpOpen(article.id); else helpOpen();
+    }
+
+    const smartExploreActionInfo = {
+        'register-stay':['Register a guest stay','Open the stay registration form. Review guest and room details before saving.','stays'],
+        'view-stay':['View stay details','Inspect a guest stay and its associated charges.','stays'],
+        'view-charges':['View room charges','Review the charges associated with a room or guest stay.','charges'],
+        'checkout-stay':['Review checkout','Open the checkout workflow and verify the outstanding balance before recording any payment.','checkout'],
+        'receipt-payment':['View payment receipt','Open a saved payment acknowledgement. Reprinting does not record a new payment.','receipts'],
+        'open-table':['Open table','Inspect this table and its current restaurant order.','tables'],
+        'view-order':['View restaurant order','Inspect items, status, and permitted next actions for this restaurant order.','orders'],
+        'ticket-create':['Create support ticket','Open a Support & Issues ticket draft. Review its information before submitting.','tickets'],
+        'ticket-view':['Open support ticket','Inspect the ticket conversation, status and updates.','tickets'],
+        'rs-table-filter':['Filter tables','Change which table statuses are displayed. This does not change any table order.','tables'],
+        'fd-room-filter':['Filter rooms','Show only rooms matching the selected occupancy or balance filter.','rooms'],
+        'fd-stay-filter':['Filter stays','Change the stay list filter without editing a stay.','stays'],
+        'charges-tab':['Switch charges section','Move between outstanding charges and additional service charges.','charges'],
+        'roomcharges-tab':['Switch room charge view','Show restaurant postings or charge records linked to rooms.','roomcharges'],
+        'cart-plus':['Increase item quantity','Adds another unit of the selected food item to the draft cart. Review the order before posting.','neworder'],
+        'cart-minus':['Decrease item quantity','Reduces the draft quantity of this food item.','neworder'],
+        'feature-edit-employee':['Manage employee account','Open an employee form. Staff access changes require authorized Admin review and saving.','users'],
+        'rb-save':['Save receipt draft','Save the Receipt Builder draft without publishing it as the active design.','receiptbuilder'],
+        'rb-publish':['Publish receipt design','Publish the saved layout used for future printed receipts. Review before confirming.','receiptbuilder'],
+        'rb-test-print':['Test print layout','Preview or print a test layout without recording a customer payment.','receiptbuilder'],
+        'rb-undo':['Undo receipt edit','Undo the most recent available Receipt Builder edit.','receiptbuilder'],
+        'rb-redo':['Redo receipt edit','Restore the next available Receipt Builder edit.','receiptbuilder'],
+        'rb-branding':['Receipt branding','Open or edit resort identity details used on printed acknowledgements.','receiptsettings'],
+        'rb-reset':['Reset receipt layout','Reset the current receipt design. Confirm any destructive reset only after reviewing it.','receiptbuilder'],
+        'rb-delete':['Remove receipt block','Remove a selected layout block. This changes the draft design, not saved payments.','receiptbuilder'],
+        'rb-add':['Add receipt block','Insert a layout block into the Receipt Builder draft.','receiptbuilder'],
+        'rb-select':['Select receipt block','Select this design block for layout editing.','receiptbuilder'],
+        'rb-copy':['Copy receipt layout','Create a separate copy of the receipt layout for editing.','receiptbuilder'],
+        'rb-duplicate':['Duplicate receipt block','Copy this block within the draft receipt design.','receiptbuilder']
+    };
+    const smartExploreRouteInfo = {
+        dashboard:'Return to the dashboard overview for this department.',
+        rooms:'View and manage room availability and related room records.',
+        stays:'Review guest stays and register new stays.',
+        charges:'Review outstanding room charges and additional services.',
+        checkout:'Review charges and record externally received settlement payments.',
+        tables:'View restaurant table status and associated orders.',
+        orders:'Find and review restaurant orders.',
+        neworder:'Prepare a restaurant order before posting or checkout.',
+        roomcharges:'Review restaurant charges posted to active room stays.',
+        receipts:'Search previous payments and reprint their receipts.',
+        audit:'Review historical staff actions and system changes.',
+        system:'Open Admin system configuration categories.',
+        users:'Manage employee accounts and authorized department access.',
+        menu:'Manage restaurant menu items and availability.',
+        categories:'Manage restaurant menu categories.',
+        services:'Configure additional charge service items.',
+        payments:'Configure externally accepted payment methods.',
+        discounts:'Review authorized discount settings and statutory discount rules.',
+        receiptsettings:'Configure resort identity and printed receipt information.',
+        receiptbuilder:'Create and publish receipt layouts.',
+        tickets:'Open Support & Issues for questions and problem reports.'
+    };
+    let smartExploreItems=[], smartExploreSelected=-1, smartExploreOrigin=null;
+    const smartExploreClean = v => String(v||'').replace(/\s+/g,' ').trim().slice(0,92);
+    function smartExploreArticle(routeHint){
+        const context=helpCurrentContext().ids.map(helpAllowed).filter(Boolean);
+        return context.find(a=>a.routes.includes(routeHint)) || HELP_ARTICLES.find(a=>a.role===role && a.routes.includes(routeHint)) || (routeHint===route?context[0]:null) || null;
+    }
+    function smartExploreField(el){
+        const id=el.id, name=el.getAttribute('name');
+        const label=(id && document.querySelector(`label[for="${CSS.escape(id)}"]`)) || el.closest('.field')?.querySelector('label');
+        const title=smartExploreClean(label?.textContent || el.getAttribute('aria-label') || (name?name.replace(/[-_]/g,' '):''));
+        if(!title) return null;
+        let text='This field is part of the current form. Check the value and the instructions before submitting.';
+        if(/amount|received|tender|cash/i.test(title))text='Enter or review the correct amount. Cash and non-cash methods can follow different validation rules. Do not retry an uncertain payment without checking Receipt History.';
+        else if(/method|payment/i.test(title))text='Choose the appropriate active payment method. Only methods classified as cash can calculate change.';
+        else if(/role|department|access|permission/i.test(title))text='Select only the intended authorized access. Employee permissions are finalized by an Admin when the form is saved.';
+        else if(/date|time/i.test(title))text='Review this date or time value for accuracy before saving.';
+        else if(/tax|vat|discount/i.test(title))text='Review the applicable financial or discount setting and its related Help article before saving.';
+        return {title,description:text,routeHint:route,kind:'field'};
+    }
+    function smartExploreCandidate(el,modal){
+        if(el.closest('#help-root,.help-inline-info,.notification-popover'))return null;
+        if(el.disabled || el.getAttribute('aria-hidden')==='true' || el.type==='hidden')return null;
+        const r=el.getBoundingClientRect(),st=getComputedStyle(el);
+        if(r.width<9||r.height<9||st.visibility==='hidden'||st.display==='none')return null;
+        if(r.right<2||r.left>innerWidth-2)return null;
+        if(el.matches('input,select,textarea'))return smartExploreField(el);
+        const nav=el.dataset.nav || (el.dataset.action?.startsWith('nav-')?el.dataset.action.slice(4):null);
+        if(nav){
+            if(!routeAllowed(nav))return null;
+            return {title:helpNavName(nav),description:smartExploreRouteInfo[nav] || 'Open this authorized resortOS section.',routeHint:nav,kind:'navigation'};
+        }
+        const act=el.dataset.action;
+        if(act && smartExploreActionInfo[act]){
+            const [title,description,routeHint]=smartExploreActionInfo[act];
+            return {title,description,routeHint,kind:'action'};
+        }
+        if(modal && el.matches('button')){
+            if(act==='modal-close')return {title:'Close window',description:'Close this window. If you entered unsaved information, check whether closing it would discard your changes.',routeHint:route,kind:'action'};
+            if(act?.startsWith('help-'))return null;
+            const title=smartExploreClean(el.getAttribute('aria-label')||el.textContent);
+            if(!title||title==='×'||title.length>64)return null;
+            const dangerous=/pay|settle|confirm|save|void|delete|disable|apply discount|submit|post to|record|publish/i.test(title);
+            return {title,description:dangerous?'This action may change a real resortOS record. Review the form and its confirmation carefully. Explore Mode will never perform it.':'This control belongs to the current window. Read its label and related instructions before using it.',routeHint:route,kind:'action'};
+        }
+        return null;
+    }
+    function smartExploreCollect(){
+        const modal=document.querySelector('#modal-root .modal');
+        const scope=modal || document.querySelector('#app');
+        if(!scope)return [];
+        const elements=modal ? scope.querySelectorAll('button,input,select,textarea') : scope.querySelectorAll('.sidebar [data-nav],.content [data-nav],.content [data-action],.content input,.content select,.content textarea');
+        const items=[], seen=new Set();
+        for(const el of elements){
+            const info=smartExploreCandidate(el,!!modal);
+            if(!info)continue;
+            const key=(el.dataset.action||el.dataset.nav||el.id||info.title)+'|'+info.title;
+            if(seen.has(key))continue;
+            seen.add(key);
+            const article=smartExploreArticle(info.routeHint);
+            const guide=smartGuidesForRole().find(g=>g.destination===info.routeHint && (!g.action || g.action===el.dataset.action));
+            items.push({...info,el,articleId:article?.id||'',guideId:guide?.id||''});
+            if(items.length>=26)break;
+        }
+        return items;
+    }
+    function smartExploreStart(){
+        if(helpMode==='adaptive')smartGuidePause();
+        if(helpMode==='guide')helpFinishGuide();
+        smartExploreOrigin=document.activeElement;
+        smartExploreItems=smartExploreCollect();
+        smartExploreSelected=-1;
+        if(!smartExploreItems.length){toast('No supported controls are visible for Explore Mode on this screen.',true);return;}
+        helpMode='explore';
+        document.getElementById('app').inert=true;
+        document.getElementById('modal-root').inert=true;
+        helpRenderRoot();
+    }
+    function smartExploreEnd(openPanel=true){
+        document.getElementById('app').inert=false;
+        document.getElementById('modal-root').inert=false;
+        smartExploreItems=[];smartExploreSelected=-1;
+        helpMode=openPanel?'panel':'closed';
+        if(openPanel){smartView='home';helpSelected='';}
+        helpRenderRoot();
+        if(!openPanel&&smartExploreOrigin?.isConnected)smartExploreOrigin.focus();
+        smartExploreOrigin=null;
+    }
+    function smartExplorePick(index){
+        const n=Number(index);
+        if(!Number.isInteger(n)||n<0||n>=smartExploreItems.length)return;
+        smartExploreSelected=n;
+        const target=smartExploreItems[n].el;
+        if(target?.isConnected){
+            target.scrollIntoView({block:'nearest',inline:'nearest'});
+        }
+        smartExploreRender();
+    }
+    function smartExploreLaunchGuide(){
+        const item=smartExploreItems[smartExploreSelected];
+        if(!item?.guideId)return;
+        if(document.querySelector('#modal-root .modal')){toast('Finish or close this window before starting a navigation guide. Your form remains unchanged.',true);return;}
+        smartExploreEnd(false);
+        smartGuideStart(item.guideId,'show');
+    }
+    function smartExploreReadArticle(){
+        const item=smartExploreItems[smartExploreSelected];
+        if(!item?.articleId)return;
+        smartExploreEnd(false);
+        smartView='articles';helpOpen(item.articleId);
+    }
+    function smartExplorePosition(){
+        if(helpMode!=='explore')return;
+        const root=document.getElementById('help-root');
+        root?.querySelectorAll('.smart-explore-marker').forEach(marker=>{
+            const i=Number(marker.dataset.id),item=smartExploreItems[i];
+            if(!item?.el?.isConnected){marker.hidden=true;return;}
+            const r=item.el.getBoundingClientRect();
+            const host=item.el.closest('.modal');
+            const hr=host?.getBoundingClientRect();
+            const visible=r.width>=9&&r.height>=9&&r.right>=10&&r.left<innerWidth-10&&r.bottom>=10&&r.top<innerHeight-10 && (!hr||(r.bottom>hr.top+10&&r.top<hr.bottom-10));
+            marker.hidden=!visible;
+            if(!visible)return;
+            Object.assign(marker.style,{top:Math.max(8,Math.min(innerHeight-40,r.top+Math.min(9,r.height/2)))+'px',left:Math.max(8,Math.min(innerWidth-40,r.right-16))+'px'});
+        });
+    }
+    function smartExploreRender(){
+        if(helpMode!=='explore')return;
+        const root=document.getElementById('help-root');
+        if(!root)return;
+        const item=smartExploreItems[smartExploreSelected];
+        root.innerHTML=`<div class="smart-explore-layer" role="region" aria-label="Read-only Explore This Page"><div class="smart-explore-shield" aria-hidden="true"></div>${smartExploreItems.map((entry,i)=>`<button class="smart-explore-marker ${smartExploreSelected===i?'active':''}" data-action="help-explore-pick" data-id="${i}" type="button" aria-label="Explain ${esc(entry.title)}" title="${esc(entry.title)}">${i+1}</button>`).join('')}<div class="smart-explore-toolbar"><div><span class="smart-explore-eyebrow">SMARTHELP · DISCOVER</span><strong>Explore This ${document.querySelector('#modal-root .modal')?'Window':'Page'}</strong><small>${smartExploreItems.length} explained controls · Read-only</small></div><div class="smart-explore-toolbar-buttons"><button data-action="help-explore-prev" type="button" ${smartExploreSelected<=0?'disabled':''}>← Prev</button><button data-action="help-explore-next" type="button" ${smartExploreSelected>=smartExploreItems.length-1?'disabled':''}>Next →</button><button data-action="help-explore-exit" type="button" class="smart-explore-exit">Exit</button></div></div>${item?`<section class="smart-explore-explanation" aria-live="polite"><div class="smart-explore-explanation-head"><span>EXPLANATION ${smartExploreSelected+1} OF ${smartExploreItems.length}</span><button type="button" data-action="help-explore-dismiss" aria-label="Close explanation">×</button></div><h3>${esc(item.title)}</h3><p>${esc(item.description)}</p><div class="smart-explore-links">${item.guideId?'<button type="button" data-action="help-explore-guide">Guide Me →</button>':''}${item.articleId?'<button type="button" data-action="help-explore-article">Read Article</button>':''}</div></section>`:''}</div>`;
+        smartExplorePosition();requestAnimationFrame(smartExplorePosition);
+        (item?root.querySelector('.smart-explore-explanation button'):root.querySelector('.smart-explore-toolbar-buttons .smart-explore-exit'))?.focus({preventScroll:true});
+    }
+
     let helpMode = 'closed', helpQuery = '', helpCategory = 'all', helpSelected = '', helpReturnRoute = null, helpFocusReturn = null, helpPanelLibrary = false, helpDraft = null;
     let helpGuideStep = 0;
     const helpTours = {
@@ -2227,7 +4523,13 @@
             tickets: 'Support & Issues',
             services: 'Service Catalog',
             menu: 'Restaurant Menu',
-            users: 'Users & Roles',
+            users: 'Employees & Roles',
+            receiptbuilder: 'Receipt Builder',
+            receiptsettings: 'Receipt Settings',
+            receipts: 'Receipt History',
+            discounts: 'Discount Management',
+            payments: 'Payment Methods',
+            categories: 'Menu Categories',
             audit: 'Audit Log',
             tickets: 'Support & Issues',
             help: 'Help Center'
@@ -2238,7 +4540,7 @@
         };
     }
     function helpAllowed(id) {
-        const a = HELP_ARTICLES.find(x => x.id === id && x.role === role);
+        const a = HELP_ARTICLES.find(x => x.id === id && hasAccess(x.role));
         return a || null;
     }
     function helpResults(q, cat) {
@@ -2288,7 +4590,8 @@
         const a = helpAllowed(id);
         if (!a)
             return '<div class="help-empty">This article is unavailable to this role.</div>';
-        return `<article class="help-article"><button class="help-back-link" type="button" data-action="help-back">← Back to ${helpMode === 'panel' ? 'suggested help' : 'Help Center'}</button><div class="help-category-tag">${esc(HELP_CATEGORIES[a.category])}</div><h2>${esc(a.title)}</h2><p class="help-article-summary">${esc(a.summary)}</p><h3>Follow these steps</h3><ol class="help-steps">${a.steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol>${a.note ? `<div class="help-note"><strong>Important</strong><p>${esc(a.note)}</p></div>` : ''}${a.related?.length ? `<div class="help-related"><h3>Related help</h3>${a.related.map(id => helpAllowed(id)).filter(Boolean).map(x => helpListEntry(x, true)).join('')}</div>` : ''}${a.routes.length ? `<div class="help-article-actions"><button class="btn primary" type="button" data-action="help-go" data-id="${esc(a.routes[0])}">Go to ${esc(helpNavName(a.routes[0]))} →</button></div>` : ''}<div class="help-ticket-link"><span>Still need help from management?</span><button class="btn" type="button" data-action="ticket-create">Create Support Ticket →</button></div></article>`;
+        const guided=smartGuideForArticle(a);
+        return `<article class="help-article"><button class="help-back-link" type="button" data-action="help-back">← Back to ${helpMode === 'panel' ? smartView==='library'?'Library':smartView==='ask'?'Ask':'Home' : 'Help Center'}</button><div class="help-category-tag">${esc(HELP_CATEGORIES[a.category])}</div><h2>${esc(a.title)}</h2><p class="help-article-summary">${esc(a.summary)}</p><h3>Follow these steps</h3><ol class="help-steps">${a.steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol>${a.note ? `<div class="help-note"><strong>Important</strong><p>${esc(a.note)}</p></div>` : ''}${a.related?.length ? `<div class="help-related"><h3>Related help</h3>${a.related.map(id => helpAllowed(id)).filter(Boolean).map(x => helpListEntry(x, true)).join('')}</div>` : ''}${a.role!==role&&hasAccess(a.role)?`<div class="help-article-actions"><button class="btn primary" type="button" data-action="help-smart-workspace" data-id="${esc(a.role)}">Switch to ${esc(HELP_ROLES[a.role])} Dashboard →</button></div>`:a.routes.length ? `<div class="help-article-actions"><button class="btn primary" type="button" data-action="help-go" data-id="${esc(a.routes[0])}">Go to ${esc(helpNavName(a.routes[0]))} →</button></div>` : ''}${guided?`<div class="smart-article-guide"><strong>Follow this in resortOS</strong>${smartGuidePanelButtons(guided.id)}</div>`:''}<div class="help-ticket-link"><span>Still need help from management?</span><button class="btn" type="button" data-action="ticket-create">Create Support Ticket →</button></div></article>`;
     }
     function helpNavName(id) {
         return {
@@ -2309,7 +4612,13 @@
             system: 'System Management',
             menu: 'Restaurant Menu',
             services: 'Service Catalog',
-            users: 'Users & Roles',
+            users: 'Employees & Roles',
+            payments: 'Payment Methods',
+            discounts: 'Discount Management',
+            receiptbuilder: 'Receipt Builder',
+            receiptsettings: 'Receipt Settings',
+            receipts: 'Receipt History',
+            categories: 'Menu Categories',
             tickets: 'Support & Issues'
         }[id] || 'Page';
     }
@@ -2329,32 +4638,37 @@
         return `${header('Help Center', 'Find clear, step-by-step instructions for your daily resortOS tasks.', btn('Restart Interactive Tutorial', 'help-restart', { small: true }))}<div class="help-center"><div class="help-center-hero"><div><span class="help-kicker">${esc(HELP_ROLES[role].toUpperCase())} HELP</span><h2>What can we help you with?</h2><p>Search a question, learn a daily task, or understand a system status.</p></div><div class="help-hero-icon" aria-hidden="true">?</div></div><label for="help-center-search" class="help-search-label">Search instructions</label><input id="help-center-search" data-help-search="center" class="input help-search" type="search" placeholder="Try “partial payment”, “add items”, or “audit log”…" value="${esc(helpQuery)}" autocomplete="off"><div class="help-categories" role="group" aria-label="Help categories"><button class="help-category-choice ${helpCategory === 'all' ? 'active' : ''}" data-action="help-category" data-id="all">All topics</button>${Object.entries(HELP_CATEGORIES).map(([id, title]) => `<button class="help-category-choice ${helpCategory === id ? 'active' : ''}" data-action="help-category" data-id="${id}">${esc(title)}</button>`).join('')}</div><div class="help-center-body"><div class="help-center-list"><div class="help-list-heading"><h2>${helpQuery ? 'Search results' : helpCategory === 'all' ? 'All help topics' : HELP_CATEGORIES[helpCategory]}</h2><small>${items.length} ${items.length === 1 ? 'article' : 'articles'}</small></div><div id="help-center-results">${helpResultCards(items, false)}</div></div><div class="help-center-detail" id="help-center-detail">${helpSelected ? helpArticleMarkup(helpSelected) : `<div class="help-center-placeholder"><div class="help-placeholder-icon">◎</div><h3>Choose a help topic</h3><p>Instructions will open here without leaving the Help Center.</p><div class="help-quick-tip"><strong>Quick tip</strong><p>Use the (?) button in the top bar for help with your current page or dialog.</p></div></div>`}</div></div><div class="help-center-footer"><span>Need to return to your work?</span><button class="btn" type="button" data-action="help-return">← Back to ${esc(helpReturnRoute ? helpNavName(helpReturnRoute) : 'Dashboard')}</button></div></div>`;
     }
     function helpRenderRoot() {
-        const target = document.getElementById('help-root');
-        if (!target)
-            return;
-        if (helpMode === 'panel')
-            target.innerHTML = `<div class="help-drawer-backdrop" data-action="help-close" aria-hidden="true"></div><aside class="help-drawer" role="dialog" aria-modal="true" aria-label="Help & Guidance"><div class="help-drawer-head"><div class="help-drawer-heading"><span class="help-icon">?</span><div><strong>Help & Guidance</strong><small>${esc(HELP_ROLES[role])} workspace</small></div></div><button type="button" data-action="help-close" class="help-close-btn" aria-label="Close Help">×</button></div><div class="help-drawer-scroll">${helpPanelContent()}</div></aside>`;
-        else if (helpMode === 'guide')
-            helpShowSpotlight();
-        else
-            target.innerHTML = '';
+        const target=document.getElementById('help-root');
+        if(!target)return;
+        if(helpMode==='panel')target.innerHTML=`<aside class="help-drawer smarthelp-drawer smart2-drawer ${smartHelpExpanded?'smart2-expanded':''}" role="complementary" aria-label="SmartHelp assistance"><div class="help-drawer-head"><div class="help-drawer-heading"><span class="help-icon">✦</span><div><strong>SmartHelp</strong><small>Your resortOS assistant</small></div></div><div class="smart2-header-actions">${smartSemanticDebugEnabled()?`<button type="button" data-action="help-semantic-debug" class="smart2-header-btn smart71-debug-btn" title="Open semantic model diagnostics" aria-label="Open semantic model diagnostics">◉</button>`:''}<button type="button" data-action="help-smart-expand" class="smart2-header-btn" aria-label="${smartHelpExpanded?'Collapse SmartHelp':'Expand SmartHelp'}" title="${smartHelpExpanded?'Compact view':'Expanded view'}" aria-pressed="${smartHelpExpanded}">${smartHelpExpanded?'↙':'⤢'}</button><button type="button" data-action="help-close" class="help-close-btn" aria-label="Close SmartHelp">×</button></div></div><div class="help-drawer-scroll smarthelp-scroll" id="smart2-scroll">${smartPanelContent()}</div><div class="smart2-drawer-bottom"><button type="button" class="smart2-help-support" data-action="help-smart-support"><span aria-hidden="true">◉</span><span>Still need help? <strong>Contact Support</strong></span><span aria-hidden="true">↗</span></button>${smart2NavMarkup()}</div></aside>`;
+        else if(helpMode==='guide')helpShowSpotlight();
+        else if(helpMode==='adaptive')smartGuideRender();
+        else if(helpMode==='explore')smartExploreRender();
+        else target.innerHTML='';
     }
     function helpOpen(id = '') {
-        helpMode = 'panel';
-        helpPanelLibrary = false;
-        helpSelected = helpAllowed(id) ? id : '';
-        helpQuery = '';
-        helpFocusReturn = document.activeElement;
+        if(helpMode==='explore')smartExploreEnd(false);
+        if(helpMode==='guide') helpFinishGuide();
+        if(helpMode==='adaptive') smartGuidePause();
+        helpFocusReturn=document.activeElement;
+        if(!id && smartView!=='ask') {smartView='home';helpQuery='';helpCategory='all';}
+        helpMode='panel';
+        helpPanelLibrary=false;
+        smartRecent=smartLoadActivity();
+        if(id && helpAllowed(id)) {
+            smartAnswerBeforeArticle=smartView;
+            helpSelected=id;
+            smartRememberArticle(id);
+        }
         helpRenderRoot();
-        document.querySelector(helpSelected ? '.help-drawer .help-close-btn' : '#help-panel-search')?.focus();
+        document.querySelector('.smarthelp-drawer .help-close-btn')?.focus();
     }
     function helpClose() {
-        helpMode = 'closed';
-        helpSelected = '';
+        helpMode='closed';
+        helpSelected='';
         helpRenderRoot();
-        if (helpFocusReturn?.isConnected)
-            helpFocusReturn.focus();
-        helpFocusReturn = null;
+        if(helpFocusReturn?.isConnected) helpFocusReturn.focus();
+        helpFocusReturn=null;
     }
     function helpShowCenter() {
         helpSelected = '';
@@ -2378,21 +4692,37 @@
         if (!helpAllowed(id))
             return;
         helpSelected = id;
-        if (helpMode === 'panel')
+        if (helpMode === 'panel') {
+            smartAnswerBeforeArticle = smartView;
+            smartRememberArticle(id);
             helpRenderRoot();
+        }
         else {
             const detail = document.getElementById('help-center-detail');
             if (detail)
                 detail.innerHTML = helpArticleMarkup(id);
         }
     }
-    function helpGoPage(id) {
-        if (!routeAllowed(id))
-            return;
-        if (document.querySelector('#modal-root .modal')) {
-            toast('Close your current task before switching pages. No form data was changed.', true);
+    function smartNavigationIsUnsafe(destination) {
+        if(document.querySelector('#modal-root .modal')) {toast('Finish or close your current dialog before switching pages. Your form is unchanged.',true);return true;}
+        if(route==='receiptbuilder' && rbDirty) {toast('You have unsaved Receipt Builder changes. Save your draft before navigating.',true);return true;}
+        if(role==='restaurant' && route==='neworder' && destination!==route && (draftOrderId || Object.values(cart).some(x=>Number(x)>0))) {toast('Finish or save your restaurant order before leaving this page.',true);return true;}
+        const editable=[...document.querySelectorAll('.content form input:not([type=hidden]):not([type=search]),.content form textarea,.content form select')];
+        if(destination!==route && editable.some(x=>x.type==='checkbox'||x.type==='radio'?x.checked!==x.defaultChecked:x.tagName==='SELECT'?[...x.options].some(o=>o.selected!==o.defaultSelected):x.value!==x.defaultValue)) {toast('This page has unsaved form changes. Save or cancel your work before navigating.',true);return true;}
+        return false;
+    }
+    function smartSwitchWorkspace(workspace) {
+        if (!['frontdesk','restaurant','admin'].includes(workspace) || !hasAccess(workspace)) {
+            toast('Your employee account is not authorized for that dashboard.',true);
             return;
         }
+        if (workspace===role) return;
+        if (smartNavigationIsUnsafe('workspace:'+workspace)) return;
+        setRole(workspace,true);
+    }
+    function helpGoPage(id) {
+        if (!routeAllowed(id)) return;
+        if(smartNavigationIsUnsafe(id)) return;
         if (helpMode === 'panel')
             helpClose();
         const preserve = route === 'help' && id === 'neworder' && helpReturnRoute === 'neworder';
@@ -2401,6 +4731,8 @@
         go(id, preserve);
     }
     function helpStartGuide() {
+        if(document.querySelector('#modal-root .modal')) {toast('Finish your open dialog before starting the tutorial.',true);return;}
+        if(route==='receiptbuilder' && rbDirty) {toast('Save your Receipt Builder changes before starting the tutorial.',true);return;}
         closeModal();
         helpGuideStep = 0;
         helpMode = 'closed';
@@ -2519,6 +4851,9 @@
         }
     }
     function helpOnRoleChange() {
+        if(smartGuide || smartGuidePaused){smartGuide=null;smartGuidePaused=null;smartGuidePersist();}
+        smart744LastVerified=null;smart744Transcript=[];smart73AskStatus=null;
+        smartView='home';smartQuestion='';smartAnswer=null;smartLastNlpTopic='';smartRecent=smartLoadActivity();
         helpSelected = '';
         helpQuery = '';
         helpCategory = 'all';
@@ -3008,23 +5343,25 @@
             <p class="ticket-demo-note">V1 uses browser storage and shared role identities. Privacy and cross-device sharing require authenticated backend enforcement before real deployment.</p>`;
     }
     function openNewTicket() {
-        if (helpMode === 'panel') helpClose();
+        const relatedArticle = helpAllowed(helpSelected);
         if (document.querySelector('#modal-root .modal')) {
             toast('Please finish or close your current window before creating a ticket.', true);
             return;
         }
-        const relatedArticle = helpAllowed(helpSelected);
-        const sourceContext = relatedArticle ? `Help article: ${relatedArticle.title}` : route !== 'tickets' ? `Page: ${helpNavName(route)}` : '';
+        const draft=smartSupportDraft?.role===role?smartSupportDraft:null;
+        smartSupportDraft=null;
+        const sourceContext = draft ? `SmartHelp: ${draft.context}` : relatedArticle ? `Help article: ${relatedArticle.title}` : route !== 'tickets' ? `Page: ${helpNavName(route)}` : '';
+        if (helpMode === 'panel') helpClose();
         showModal('Create Support Ticket', 'Report a problem or ask management for help.', `
             <form id="ticket-create-form" class="ticket-form">
                 ${sourceContext ? `<div class="ticket-context">Related: ${esc(sourceContext)}</div>` : ''}
                 <input type="hidden" name="context" value="${esc(sourceContext)}">
                 <div class="field"><label for="ticket-category">What do you need help with?</label><select class="select" id="ticket-category" name="category" required>
-                    <option value="system">System Problem</option><option value="question">Question or Assistance</option><option value="operational">Operational Issue</option>
+                    <option value="system">System Problem</option><option value="question" ${draft?'selected':''}>Question or Assistance</option><option value="operational">Operational Issue</option>
                 </select></div>
-                <div class="field"><label for="ticket-subject">Subject</label><input class="input" id="ticket-subject" name="subject" minlength="4" maxlength="110" placeholder="Briefly describe the issue" required></div>
+                <div class="field"><label for="ticket-subject">Subject</label><input class="input" id="ticket-subject" name="subject" minlength="4" maxlength="110" placeholder="Briefly describe the issue" value="${esc(draft?.question||'')}" required></div>
                 <div class="field" id="ticket-location-field" hidden><label for="ticket-location">Where did it happen?</label><input class="input" id="ticket-location" name="location" maxlength="100" placeholder="e.g. Restaurant kitchen"></div>
-                <div class="field"><label for="ticket-description">Description</label><textarea id="ticket-description" class="input ticket-textarea" name="description" minlength="10" maxlength="2500" rows="5" required placeholder="What happened? What help do you need?"></textarea></div>
+                <div class="field"><label for="ticket-description">Description</label><textarea id="ticket-description" class="input ticket-textarea" name="description" minlength="10" maxlength="2500" rows="5" required placeholder="What happened? What help do you need?">${draft?esc(`Help requested for ${draft.context}.\nPlease describe what happened, which steps you tried, and what you need help with. Remove any details you do not want shared.`):''}</textarea></div>
                 <div class="field"><label for="ticket-priority">Priority</label><select class="select" name="priority" id="ticket-priority"><option value="normal">Normal</option><option value="urgent">Urgent — needs prompt attention</option></select></div>
                 <fieldset class="ticket-visibility-picker"><legend>Who should see this issue?</legend><p class="ticket-visibility-hint">Suggested from the category. You can change it.</p>
                     <label class="ticket-visibility-choice"><input type="radio" name="visibility" value="private" checked><span><strong>Only me & Admin</strong><small>Private question or individual issue</small></span></label>
@@ -3032,7 +5369,7 @@
                     <label class="ticket-visibility-choice"><input type="radio" name="visibility" value="all"><span><strong>All Staff</strong><small>Shared with Front Desk, Restaurant and Admin</small></span></label>
                 </fieldset>
                 <div id="ticket-visibility-explanation" class="ticket-sharing-note" aria-live="polite"></div>
-                <div class="ticket-notice">Everyone in the selected audience can read the issue title, description and official updates. Replies to Admin stay private. Do not include passwords, payment details or unnecessary guest information. For emergencies, contact management directly.</div>
+                ${draft?'<div class="smart-ticket-prefill-note">SmartHelp prepared this draft. Review and edit the subject, description, category and visibility before choosing Submit Ticket.</div>':''}<div class="ticket-notice">Everyone in the selected audience can read the issue title, description and official updates. Replies to Admin stay private. Do not include passwords, payment details or unnecessary guest information. For emergencies, contact management directly.</div>
                 <div class="ticket-form-actions">${btn('Cancel', 'modal-close')}<button type="submit" class="btn primary">Submit Ticket</button></div>
             </form>`);
         document.getElementById('ticket-category')?.dispatchEvent(new Event('change', { bubbles: true }));
@@ -3473,12 +5810,16 @@
         document.getElementById('modal-root').innerHTML = `<div class="modal-overlay"><section class="modal" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="modal-head"><div><h2>${title}</h2><p class="sub">${subtitle}</p></div><div class="modal-help-actions"><button class="modal-help-btn" type="button" data-action="help-open" aria-label="Help with this window" title="Help with this window">? Help</button><button class="icon-btn" data-action="modal-close" aria-label="Close">×</button></div></div><div class="modal-body">${body}</div>${footer ? `<div class="modal-footer">${footer}</div>` : ''}</section></div>`;
         document.body.style.overflow = 'hidden';
         helpInsertHints(document.getElementById('modal-root'));
+        if(helpMode==='panel' && smartView==='home' && !helpSelected) helpRenderRoot();
     }
     function closeModal() {
         document.getElementById('modal-root').innerHTML = '';
         document.body.style.overflow = '';
+        if(helpMode==='panel' && smartView==='home' && !helpSelected) helpRenderRoot();
     }
     function toast(message, error = false) {
+        if(error && ['frontdesk','restaurant','admin'].includes(role))smartLastError={role,message:String(message).slice(0,180),at:Date.now()};
+        if(error && smartGuide && smartGuides.some(g=>g.id===smartGuide.id&&g.operation)) { smartGuide.lastError=String(message).slice(0,200);requestAnimationFrame(smartGuideSync); }
         let el = document.getElementById('toast');
         el.innerHTML = `<div class="toast ${error ? 'error' : ''}">${esc(message)}</div>`;
         setTimeout(() => {
@@ -3834,18 +6175,14 @@
                 helpArticleOpen(id);
             else if (act === 'help-back') {
                 helpSelected = '';
-                if (helpMode === 'panel')
-                    helpRenderRoot();
+                if (helpMode === 'panel') { smartView = smartAnswerBeforeArticle; helpRenderRoot(); }
                 else
                     document.getElementById('help-center-detail').innerHTML = '<div class="help-center-placeholder"><h3>Choose a help topic</h3><p>Choose a question from the list to read its instructions.</p></div>';
             }
-            else if (act === 'help-full')
-                helpShowCenter();
+            else if (act === 'help-full') { smartView = 'library';smartLibrarySection='articles'; helpSelected = ''; helpRenderRoot(); }
             else if (act === 'help-context') {
-                helpPanelLibrary = false;
-                helpSelected = '';
-                helpQuery = '';
-                helpCategory = 'all';
+                helpPanelLibrary = false; smartView = 'home';
+                helpSelected = ''; helpQuery = ''; helpCategory = 'all';
                 helpRenderRoot();
             }
             else if (act === 'help-return')
@@ -3853,17 +6190,50 @@
             else if (act === 'help-category') {
                 helpCategory = id;
                 helpSelected = '';
-                if (helpMode === 'panel')
-                    helpRenderRoot();
-                else
-                    render();
+                if (helpMode === 'panel') helpRenderRoot();
+                else render();
             }
             else if (act === 'help-go')
                 helpGoPage(id);
+            else if (act === 'help-smart-workspace')
+                smartSwitchWorkspace(id);
             else if (act === 'help-restart')
                 helpStartGuide();
             else if (act === 'help-guide-skip')
                 helpFinishGuide();
+            else if (act === 'help-adaptive-start') smartGuideStart(id,'show');
+            else if (act === 'help-adaptive-jump') smartGuideStart(id,'jump');
+            else if (act === 'help-adaptive-pause') smartGuidePause();
+            else if (act === 'help-adaptive-exit' || act === 'help-adaptive-complete') smartGuideExit();
+            else if (act === 'help-adaptive-resume') smartGuideResume();
+            else if (act === 'help-adaptive-forget') {smartGuidePaused=null;smartGuidePersist();helpRenderRoot();}
+            else if (act === 'help-adaptive-check') smartGuideSync();
+            else if (act === 'help-adaptive-article') smartGuideReadArticle();
+            else if (act === 'help-adaptive-inline-read') smartGuideInlineRead();
+            else if (act === 'help-explore-start') smartExploreStart();
+            else if (act === 'help-explore-exit') smartExploreEnd(true);
+            else if (act === 'help-explore-pick') smartExplorePick(id);
+            else if (act === 'help-explore-dismiss') {smartExploreSelected=-1;smartExploreRender();}
+            else if (act === 'help-explore-next') smartExplorePick(smartExploreSelected+1);
+            else if (act === 'help-explore-prev') smartExplorePick(smartExploreSelected-1);
+            else if (act === 'help-explore-guide') smartExploreLaunchGuide();
+            else if (act === 'help-explore-article') smartExploreReadArticle();
+            else if (act === 'help-smart-support') smartSupportStart();
+            else if (act === 'help-smart-tab' && ['home','ask','guides','library','articles','troubleshoot','activity'].includes(id)) { const next={'articles':'articles','troubleshoot':'fixes','activity':'recent'}[id]; if(next){smartLibrarySection=next;smartView='library';}else smartView=id;helpSelected='';helpQuery='';helpCategory='all';helpRenderRoot(); }
+            else if (act === 'help-smart-library' && ['articles','fixes','recent'].includes(id)) {smartLibrarySection=id;helpQuery='';helpCategory='all';helpRenderRoot();}
+            else if (act === 'help-guide-section' && ['tasks','find'].includes(id)) {smartGuideSection=id;helpRenderRoot();}
+            else if (act === 'help-semantic-debug' && smartSemanticDebugEnabled()){smartView='diagnostics';helpSelected='';helpRenderRoot();}
+            else if (act === 'help-semantic-test' && smartSemanticDebugEnabled())void smartSemanticDiagnosticsRun();
+            else if (act === 'help-semantic-copy' && smartSemanticDebugEnabled())void smartSemanticCopyReport();
+            else if (act === 'help-benchmark-run' && smartSemanticDebugEnabled())void smart72Run(id);
+            else if (act === 'help-benchmark-classic' && smartSemanticDebugEnabled())void smart72RunClassic(id);
+            else if (act === 'help-benchmark-stop' && smartSemanticDebugEnabled()){smart72Cancel=true;toast('Benchmark will stop after the current batch.');}
+            else if (act === 'help-benchmark-download' && smartSemanticDebugEnabled())smart72Download();
+            else if (act === 'help-benchmark-copy' && smartSemanticDebugEnabled())void smart72Copy();
+            else if (act === 'help-smart-expand') {const previous=document.getElementById('smart2-scroll')?.scrollTop||0;smartHelpExpanded=!smartHelpExpanded;helpRenderRoot();const scroller=document.getElementById('smart2-scroll');if(scroller)scroller.scrollTop=previous;}
+            else if (act === 'help-smart-question') smartRunQuestion(id);
+            else if (act === 'help-smart-prompt-category' && ['foryou','staff','payments','restaurant','settings'].includes(id)) { smartAskCategory=id; helpRenderRoot(); }
+            else if (act === 'help-smart-reset') { smartSemanticRunId++;smartQuestion='';smartAnswer=null;smartAskDraft='';smartLastNlpTopic='';smart744LastVerified=null;smart744Transcript=[];smart73AskStatus=null;smartSemanticState='idle';smartSemanticMessage='';smartSemanticLastRanking=null;helpRenderRoot();document.getElementById('smart-question-ask')?.focus(); }
             return;
         }
         if (navAction(act)) {
@@ -4234,6 +6604,14 @@
         const active = document.activeElement;
         if (active?.matches('input[data-payment-amount]')) active.blur();
     }, { capture: true, passive: true });
+    document.addEventListener('keydown', e => {
+        if(e.target.matches('.smart-ask-composer textarea[name=q]') && e.key==='Enter' && !e.shiftKey && !e.isComposing){e.preventDefault();if(e.target.value.trim())e.target.form?.requestSubmit();}
+    });
+    document.addEventListener('submit', e => {
+        if(e.target.id!=='smarthelp-question-form') return;
+        e.preventDefault();
+        smartRunQuestion(e.target.querySelector('[name="q"]')?.value || '');
+    });
     document.addEventListener('input', e => {
         if (e.target.closest('#feature-receipt-form')) updateReceiptPreviewSelect(e.target);
     });
@@ -4321,6 +6699,26 @@
         }
     });
     document.addEventListener('input', e => {
+        if(e.target.id==='smart-guide-filter'){
+            const q=e.target.value.toLowerCase().trim();let found=0;
+            document.querySelectorAll('.smart2-guide-card').forEach(card=>{const matches=!q||card.dataset.guideEntry.toLowerCase().includes(q);card.hidden=!matches;if(matches)found++;});
+            const count=document.getElementById('smart-guide-count');if(count)count.textContent=found+' guides';
+            const empty=document.getElementById('smart-guide-no-results');if(empty)empty.hidden=!!found;
+            return;
+        }
+        if(e.target.matches('[data-smart-search]')) {
+            if(e.target.dataset.smartSearch==='ask'){smartAskDraft=e.target.value; e.target.style.height='auto'; e.target.style.height=Math.min(e.target.scrollHeight,132)+'px';return;}
+            helpQuery=e.target.value;
+            if(e.target.dataset.smartSearch==='home') {
+                const target=document.getElementById('smart-live-results');
+                if(target){target.hidden=!helpQuery.trim();target.innerHTML=helpQuery.trim()?smartSearchMarkup(helpQuery):'';}
+            }
+            if(e.target.dataset.smartSearch==='articles') {
+                const target=document.getElementById('smart-article-results');
+                if(target) target.innerHTML=helpQuery.trim()?smartSearchMarkup(helpQuery,helpCategory):HELP_ARTICLES.filter(a=>hasAccess(a.role)&&(helpCategory==='all'||a.category===helpCategory)).map(smartTopicMarkup).join('');
+            }
+            return;
+        }
         if (e.target.matches('[data-rb-layout-name]')) { if(rbWorking.name!==e.target.value.slice(0,90)){rbHistory('layout-name');rbWorking.name=e.target.value.slice(0,90);rbDirty=true;rbUpdatePreview();}return; }
         if (e.target.matches('[data-rb-prop]')) { rbUpdateProp(e.target); return; }
 
@@ -4796,6 +7194,11 @@
             }
         }
     });
+    document.addEventListener('submit', e => {
+        if(e.target.id!=='smart-adaptive-question-form')return;
+        e.preventDefault();
+        smartGuideInlineAnswer(new FormData(e.target).get('question'));
+    });
     document.addEventListener('click', e => {
         if (helpMode !== 'guide') return;
         const steps = helpTours[role], step = steps?.[helpGuideStep];
@@ -4811,6 +7214,25 @@
             helpShowSpotlight();
         });
     }, true);
+    document.addEventListener('click', e => {
+        if(helpMode!=='explore')return;
+        if(e.target.closest('.smart-explore-layer'))return;
+        e.preventDefault();e.stopImmediatePropagation();
+    },true);
+    document.addEventListener('submit', e => {
+        if(helpMode==='adaptive'&&smartGuide&&smartGuides.some(g=>g.id===smartGuide.id&&g.operation))requestAnimationFrame(smartGuideSync);
+    });
+    document.addEventListener('click', e => {
+        if(helpMode!=='adaptive'||!smartGuide)return;
+        if(e.target.closest('.smart-adaptive-card,.smart-adaptive-message,.smart-operation-card'))return;
+        const nav=e.target.closest('[data-nav],[data-action^="nav-"]');
+        if(nav && smartNavigationIsUnsafe(nav.dataset.nav||nav.dataset.action.slice(4))){e.preventDefault();e.stopImmediatePropagation();return;}
+        requestAnimationFrame(smartGuideSync);
+    }, true);
+    window.addEventListener('resize',smartExplorePosition);
+    window.addEventListener('scroll',smartExplorePosition,true);
+    window.addEventListener('resize', smartGuidePosition);
+    window.addEventListener('scroll', smartGuidePosition, true);
     window.addEventListener('resize', helpPositionSpotlight);
     window.addEventListener('scroll', helpPositionSpotlight, true);
     window.addEventListener('storage', e => {
@@ -4847,6 +7269,12 @@
             e.preventDefault();
             e.stopImmediatePropagation();
             helpFinishGuide();
+        }
+        else if (helpMode === 'adaptive') {
+            e.preventDefault();e.stopImmediatePropagation();smartGuidePause();
+        }
+        else if (helpMode === 'explore') {
+            e.preventDefault();e.stopImmediatePropagation();smartExploreEnd(true);
         }
     }, true);
     document.addEventListener('keydown', e => {
